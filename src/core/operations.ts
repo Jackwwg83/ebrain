@@ -9,6 +9,7 @@ import type { BrainEngine } from './engine.ts';
 import { clampSearchLimit } from './engine.ts';
 import type { GBrainConfig } from './config.ts';
 import type { PageType } from './types.ts';
+import type { ExecutiveProfile, PolicyDecision } from '../ebrain/types.ts';
 import { importFromContent } from './import-file.ts';
 import { hybridSearch, hybridSearchCached } from './search/hybrid.ts';
 import { expandQuery } from './search/expansion.ts';
@@ -264,6 +265,9 @@ export interface AuthInfo {
    * case (back-compat).
    */
   allowedSources?: string[];
+  executiveId?: string;
+  executiveEmail?: string;
+  executiveRole?: string;
 }
 
 export interface OperationContext {
@@ -383,6 +387,19 @@ export interface OperationContext {
    * satisfied even on single-source brains.
    */
   sourceId: string;
+  executive?: ExecutiveProfile;
+  orgId?: string;
+  buId?: string;
+  workspaceId?: string;
+  userAttrs?: {
+    roles?: string[];
+    departments?: string[];
+    employmentLevel?: string;
+    employmentStatus?: 'active' | 'on_leave' | 'terminated';
+    employeeId?: string;
+  };
+  dataClassificationMax?: 'L0' | 'L1' | 'L2' | 'L3';
+  policyDecision?: PolicyDecision;
 }
 
 /**

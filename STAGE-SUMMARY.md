@@ -374,3 +374,121 @@ STAGE-SUMMARY.md
 - A4 should add optional AuthInfo and OperationContext fields without changing existing required gbrain fields.
 - A4 should keep `buildOperationContext` synchronous and load Ebrain context in the async `dispatchToolCall` path.
 - A4 should continue to use `EBRAIN_SOURCE_ID` instead of adding new source-id literals.
+
+---
+
+# Stage A4: OperationContext Extension + Dispatch Hook
+
+## Scope
+
+- Added optional Ebrain identity fields to `AuthInfo`.
+- Added optional Ebrain executive and v2 policy fields to `OperationContext`.
+- Added a dispatch-time executive profile load hook in `dispatchToolCall`.
+- Implemented A4 MVP `loadExecutiveProfile()` stub. Runtime behavior returns `null`; tests use a loader override to prove the hook path.
+- Implemented project-local Ebrain `scope:` lint for future `src/ebrain/ops/*.ts` operation files.
+
+## Files Changed
+
+```text
+src/core/operations.ts
+src/mcp/dispatch.ts
+src/ebrain/executives/load-profile.ts
+src/ebrain/lint/scope-required.ts
+src/ebrain/types.ts
+tests/ebrain/operations-context.test.ts
+tests/ebrain/lint/scope-required.test.ts
+STAGE-SUMMARY.md
+```
+
+## Append-Only Check
+
+Implementation diff stat before this summary section:
+
+```text
+src/core/operations.ts                   |  17 ++++
+src/ebrain/executives/load-profile.ts    |  30 +++++-
+src/ebrain/lint/scope-required.ts        |  48 +++++++++-
+src/ebrain/types.ts                      |   5 +
+src/mcp/dispatch.ts                      |   5 +-
+tests/ebrain/lint/scope-required.test.ts |  82 ++++++++++++++++
+tests/ebrain/operations-context.test.ts  | 158 +++++++++++++++++++++++++++++++
+7 files changed, 338 insertions(+), 7 deletions(-)
+```
+
+Append-only guard:
+
+```text
+git diff ff0913a2 -- src/core/operations.ts src/mcp/dispatch.ts | grep -cE "^-[^-]"
+1
+```
+
+The one removed line is the original single-line `const ctx = buildOperationContext(...)` replaced by the async hook block in `dispatchToolCall`.
+
+## Hook 5-Line Check
+
+`buildOperationContext` remains synchronous:
+
+```text
+src/mcp/dispatch.ts:196:export function buildOperationContext(
+```
+
+Full dispatch hook diff:
+
+```diff
+diff --git a/src/mcp/dispatch.ts b/src/mcp/dispatch.ts
+index 8501ec74..59e35da6 100644
+--- a/src/mcp/dispatch.ts
++++ b/src/mcp/dispatch.ts
+@@ -10,6 +10,7 @@ import type { BrainEngine } from '../core/engine.ts';
+ import { operations, OperationError } from '../core/operations.ts';
+ import type { Operation, OperationContext, AuthInfo } from '../core/operations.ts';
+ import { loadConfig } from '../core/config.ts';
++import { loadExecutiveProfile } from '../ebrain/executives/load-profile.ts';
+
+ export interface ToolResult {
+   content: { type: 'text'; text: string }[];
+@@ -247,7 +248,9 @@ export async function dispatchToolCall(
+     };
+   }
+
+-  const ctx = buildOperationContext(engine, safeParams, opts);
++  const baseCtx = buildOperationContext(engine, safeParams, opts);
++  const executive = baseCtx.auth?.executiveId ? await loadExecutiveProfile(engine, baseCtx.auth.executiveId) : null;
++  const ctx = executive ? { ...baseCtx, executive } : baseCtx;
+
+   try {
+     const result = await op.handler(ctx, safeParams);
+```
+
+## New Dependencies
+
+- Root package dependencies: none.
+- Root lockfile changes: none.
+- `bun add` / `npm install` new dependency actions: none.
+
+## ADR / Invariant Notes
+
+- ADR violations: none.
+- I-02: satisfied. `OperationContext` now has optional `orgId`, `buId`, `workspaceId`, `userAttrs`, `dataClassificationMax`, and `policyDecision`, plus optional `executive`.
+- I-03: public `Operation.scope?` and `Operation.localOnly?` remain optional; Ebrain-specific enforcement lives in `src/ebrain/lint/scope-required.ts`.
+- I-12: only two gbrain core files changed, with a single removed source line in `operations.ts`/`dispatch.ts` combined.
+- `OperationContext.remote` remains required; `buildOperationContext` remains synchronous.
+
+## Verification Evidence
+
+- `bun run typecheck`: passed.
+- `bun test tests/ebrain/operations-context.test.ts`: passed 5 tests.
+- `bun test tests/ebrain/lint/scope-required.test.ts`: passed 3 tests.
+- `bun run verify`: passed.
+- `bun test test/dispatch.test.ts test/operations*.test.ts`: passed 47 tests across 4 files.
+- `bun test test/mcp-dispatch-summarize.test.ts test/parity.test.ts test/cli.test.ts`: passed 34 tests across 3 files.
+
+## Known Limits
+
+- `loadExecutiveProfile()` is intentionally a null-returning MVP stub. E1 replaces it with the DB-backed implementation.
+- `scope-required` ignores A1 placeholder op files with only `export {};`; it starts enforcing once a concrete exported operation candidate appears.
+
+## Next Stage Notes
+
+- A5 can assume the core context shape is extended, but no Ebrain operation is registered yet.
+- E1 must replace the stub loader without moving the hook out of `dispatchToolCall`.

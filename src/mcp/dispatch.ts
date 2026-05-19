@@ -10,6 +10,7 @@ import type { BrainEngine } from '../core/engine.ts';
 import { operations, OperationError } from '../core/operations.ts';
 import type { Operation, OperationContext, AuthInfo } from '../core/operations.ts';
 import { loadConfig } from '../core/config.ts';
+import { loadExecutiveProfile } from '../ebrain/executives/load-profile.ts';
 
 export interface ToolResult {
   content: { type: 'text'; text: string }[];
@@ -247,7 +248,9 @@ export async function dispatchToolCall(
     };
   }
 
-  const ctx = buildOperationContext(engine, safeParams, opts);
+  const baseCtx = buildOperationContext(engine, safeParams, opts);
+  const executive = baseCtx.auth?.executiveId ? await loadExecutiveProfile(engine, baseCtx.auth.executiveId) : null;
+  const ctx = executive ? { ...baseCtx, executive } : baseCtx;
 
   try {
     const result = await op.handler(ctx, safeParams);

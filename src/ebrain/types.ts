@@ -14,6 +14,11 @@ export type ClassificationLevel = (typeof CLASSIFICATION_LEVELS)[number];
 
 export type TrustTier = (typeof TRUST_TIERS)[number];
 
+export type PolicyDecision = {
+  decision: 'allow' | 'deny' | 'redact';
+  reason?: string;
+};
+
 export interface EnterpriseConfig {
   enabled?: boolean;
   apps?: Record<string, EnterpriseAppConfig>;
