@@ -111,7 +111,21 @@ describe.skipIf(skip)('schema drift: PGLite ↔ Postgres post-initSchema parity 
 
   // Sentinel cases. Each is the v0.26.1 bug class for one specific table.
   // Failing here gives a tighter blame message than the global parity test.
-  for (const sentinel of ['oauth_clients', 'mcp_request_log', 'access_tokens', 'eval_candidates']) {
+  for (const sentinel of [
+    'oauth_clients',
+    'oauth_tokens',
+    'mcp_request_log',
+    'access_tokens',
+    'eval_candidates',
+    'pages',
+    'enterprise_apps',
+    'enterprise_oauth_tokens',
+    'enterprise_ingest_sources',
+    'enterprise_ingest_objects',
+    'enterprise_entity_aliases',
+    'enterprise_fact_conflicts',
+    'executives',
+  ]) {
     test(`regression #588: ${sentinel} columns match across engines`, () => {
       const pgCols = pgSnap.get(sentinel);
       const pgliteCols = pgliteSnap.get(sentinel);

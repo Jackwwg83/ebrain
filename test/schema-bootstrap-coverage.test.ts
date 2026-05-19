@@ -129,6 +129,35 @@ const REQUIRED_BOOTSTRAP_COVERAGE: ForwardReference[] = [
   { kind: 'column', table: 'sources', column: 'archived' },
   { kind: 'column', table: 'sources', column: 'archived_at' },
   { kind: 'column', table: 'sources', column: 'archive_expires_at' },
+  // Ebrain v200 — enterprise baseline columns/tables are applied by the
+  // v200 migration and mirrored in PGLITE_SCHEMA_SQL for fresh PGLite init.
+  { kind: 'column', table: 'pages', column: 'enterprise_source_type' },
+  { kind: 'column', table: 'pages', column: 'enterprise_source_ref' },
+  { kind: 'column', table: 'pages', column: 'owner_org_unit' },
+  { kind: 'column', table: 'pages', column: 'classification' },
+  { kind: 'column', table: 'pages', column: 'confidence' },
+  { kind: 'column', table: 'pages', column: 'provenance' },
+  { kind: 'column', table: 'pages', column: 'object_hash' },
+  { kind: 'column', table: 'pages', column: 'last_ingested_at' },
+  { kind: 'column', table: 'pages', column: 'org_id' },
+  { kind: 'column', table: 'pages', column: 'bu_id' },
+  { kind: 'column', table: 'pages', column: 'workspace_id' },
+  { kind: 'column', table: 'pages', column: 'author_entity_id' },
+  { kind: 'column', table: 'pages', column: 'reviewer_entity_id' },
+  { kind: 'column', table: 'pages', column: 'retention_policy_id' },
+  { kind: 'column', table: 'pages', column: 'legal_hold_until' },
+  { kind: 'column', table: 'pages', column: 'trust_tier' },
+  { kind: 'table', name: 'enterprise_apps' },
+  { kind: 'table', name: 'enterprise_oauth_tokens' },
+  { kind: 'table', name: 'enterprise_ingest_sources' },
+  { kind: 'table', name: 'enterprise_ingest_objects' },
+  { kind: 'table', name: 'enterprise_entity_aliases' },
+  { kind: 'table', name: 'enterprise_fact_conflicts' },
+  { kind: 'table', name: 'executives' },
+  { kind: 'column', table: 'oauth_clients', column: 'executive_id' },
+  { kind: 'column', table: 'oauth_tokens', column: 'executive_id' },
+  { kind: 'column', table: 'mcp_request_log', column: 'executive_id' },
+  { kind: 'column', table: 'mcp_request_log', column: 'executive_role' },
 ];
 
 test('applyForwardReferenceBootstrap covers every forward reference declared in REQUIRED_BOOTSTRAP_COVERAGE', async () => {
@@ -142,6 +171,7 @@ test('applyForwardReferenceBootstrap covers every forward reference declared in 
     // it pre-dates the migrations that introduced these objects. Drop columns
     // before the table-level constraints that depend on them.
     await db.exec(`
+      DROP VIEW IF EXISTS enterprise_fact_claims_view;
       ALTER TABLE pages DROP CONSTRAINT IF EXISTS pages_source_slug_key;
       ALTER TABLE pages ADD CONSTRAINT pages_slug_key UNIQUE (slug);
       DROP INDEX IF EXISTS idx_pages_source_id;
@@ -250,6 +280,7 @@ test('after bootstrap, PGLITE_SCHEMA_SQL replays without crashing on missing for
     const db = (engine as any).db;
 
     await db.exec(`
+      DROP VIEW IF EXISTS enterprise_fact_claims_view;
       ALTER TABLE pages DROP CONSTRAINT IF EXISTS pages_source_slug_key;
       ALTER TABLE pages ADD CONSTRAINT pages_slug_key UNIQUE (slug);
       DROP INDEX IF EXISTS idx_pages_source_id;
@@ -279,6 +310,22 @@ test('after bootstrap, PGLITE_SCHEMA_SQL replays without crashing on missing for
     const { PGLITE_SCHEMA_SQL } = await import('../src/core/pglite-schema.ts');
     await (engine as any).applyForwardReferenceBootstrap();
     await db.exec(PGLITE_SCHEMA_SQL);
+  } finally {
+    await engine.disconnect();
+  }
+}, 30000);
+
+test('v200 enterprise_fact_claims_view is present after initSchema', async () => {
+  const engine = new PGLiteEngine();
+  await engine.connect({});
+  try {
+    await engine.initSchema();
+    const db = (engine as any).db;
+    const { rows } = await db.query(
+      `SELECT 1 FROM information_schema.views
+       WHERE table_schema = 'public' AND table_name = 'enterprise_fact_claims_view'`,
+    );
+    expect(rows.length).toBeGreaterThan(0);
   } finally {
     await engine.disconnect();
   }

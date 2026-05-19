@@ -241,3 +241,74 @@ cdba533a v0.36.2.0 feat: ZeroEntropy as default + zero-based README rewrite (#11
 
 - 风险: 设计文档源码引用基于 v0.35.7，PM 已排队 Round 7 校验 against v0.36.3.0 验证兼容性。
 - 建议: A2 (v200 schema migration) 启动前必须等 Round 7 校验通过。
+
+---
+
+# Stage A2: v200 Schema Migration
+
+## Scope
+
+- Added schema migration `v200_ebrain_enterprise_baseline` in `src/core/migrate.ts`.
+- Added PGLite forward-reference schema coverage in `src/core/pglite-schema.ts`.
+- Added bootstrap coverage for Ebrain tables, columns, and view.
+- Added Ebrain v200 migration tests under `tests/ebrain/migrations/`.
+- Updated schema drift sentinels so PG/PGLite drift checks include Ebrain tables.
+
+## Files Changed
+
+```text
+src/core/migrate.ts
+src/core/pglite-schema.ts
+test/e2e/schema-drift.test.ts
+test/schema-bootstrap-coverage.test.ts
+tests/ebrain/migrations/v200.test.ts
+STAGE-SUMMARY.md
+```
+
+## Schema Additions
+
+- `pages`: 16 Ebrain columns, including `classification` with `L0/L1/L2/L3` CHECK and `trust_tier` with `raw/draft/published/verified/inferred` CHECK.
+- New tables: `enterprise_apps`, `enterprise_oauth_tokens`, `enterprise_ingest_sources`, `enterprise_ingest_objects`, `enterprise_entity_aliases`, `enterprise_fact_conflicts`, `executives`.
+- Existing tables: nullable `executive_id` on `oauth_clients` and `oauth_tokens`; `executive_id` and `executive_role` on `mcp_request_log`.
+- New view: `enterprise_fact_claims_view`.
+- RLS: enabled on all seven Ebrain tables in the Postgres migration path; `enterprise_oauth_tokens` and `executives` carry `GBRAIN:RLS_EXEMPT` table comments.
+
+## New Dependencies
+
+- Root package dependencies: none.
+- Root lockfile changes: none.
+- `bun add` / `npm install` new dependency actions: none.
+
+## ADR / Invariant Notes
+
+- ADR violations: none.
+- I-04: enforced by `pages_classification_check` in Postgres and inline CHECK in PGLite.
+- I-06: satisfied. No `embedding_model_id` column was added; embedding provider distinction remains on `content_chunks.model`.
+- I-08: satisfied. `oauth_clients.executive_id` and `oauth_tokens.executive_id` are nullable at schema level.
+- I-12: A2 edits are limited to migration/schema test surfaces plus this summary.
+
+## Verification Evidence
+
+- `bun run verify`: passed.
+- `bun test tests/ebrain/migrations/v200.test.ts`: passed 5 tests.
+- `bun test test/schema-bootstrap-coverage.test.ts`: passed 10 tests.
+- `bun test test/migrate-extensions.test.ts test/migrate.test.ts --timeout 60000`: passed 127 tests.
+- `bun test test/e2e/schema-drift.test.ts`: exited 0; 17 drift tests skipped because `DATABASE_URL` was not set.
+- Source CLI fresh PGLite init: `GBRAIN_HOME=/tmp/ebrain-stage-a2-cli bun src/cli.ts init --pglite --path /tmp/ebrain-stage-a2-cli/brain.pglite --json` applied schema `1 -> 200` and applied `[200] v200_ebrain_enterprise_baseline`.
+- Source CLI schema migration replay: `GBRAIN_HOME=/tmp/ebrain-stage-a2-cli bun src/cli.ts apply-migrations --force-schema --yes --non-interactive` exited 0 with `Applied 0 schema migration(s); now at v200.`
+- Source CLI doctor: `GBRAIN_HOME=/tmp/ebrain-stage-a2-cli bun src/cli.ts doctor --fast` exited 0 with health score `90/100`; warnings were limited to skipped resolver and DB checks under `--fast`.
+- Runtime artifact inspection against the fresh PGLite database confirmed all seven Ebrain tables, `enterprise_fact_claims_view`, executive columns on OAuth/audit tables, `pages.classification`, `pages.trust_tier`, and failed insertion of `classification='L99'`.
+
+## Known Limits
+
+- Full Postgres schema drift execution was not run because no `DATABASE_URL` was configured in this workspace.
+- PGLite uses a btree index for `enterprise_ingest_objects_seen_brin_idx`; Postgres uses BRIN.
+- PGLite generated column syntax for `enterprise_entity_aliases.alias_norm` was probed locally and accepted before adding it to the migration.
+- The compiled binary PGLite runtime path issue recorded in A1 remains outside A2 scope; A2 validation used the source CLI as specified.
+
+## A3 Notes
+
+- A3 ingest code should write `pages.enterprise_source_type`, `pages.enterprise_source_ref`, and `enterprise_ingest_objects` idempotently.
+- A3 should continue to use `content_chunks.model` for embedding provider separation and must not add `embedding_model_id`.
+- OAuth executive ownership remains an application-layer rule; schema columns are intentionally nullable for MVP compatibility.
+- Before any Postgres deployment path, run `test/e2e/schema-drift.test.ts` with a real `DATABASE_URL`.

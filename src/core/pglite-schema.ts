@@ -797,6 +797,211 @@ CREATE TRIGGER trg_pages_search_vector
 -- pages.timeline (markdown) still feeds search_vector via trg_pages_search_vector.
 DROP TRIGGER IF EXISTS trg_timeline_search_vector ON timeline_entries;
 DROP FUNCTION IF EXISTS update_page_search_vector_from_timeline();
+
+-- ============================================================
+-- Ebrain v200 enterprise baseline
+-- ============================================================
+ALTER TABLE pages ADD COLUMN IF NOT EXISTS enterprise_source_type TEXT;
+ALTER TABLE pages ADD COLUMN IF NOT EXISTS enterprise_source_ref TEXT;
+ALTER TABLE pages ADD COLUMN IF NOT EXISTS owner_org_unit TEXT;
+ALTER TABLE pages ADD COLUMN IF NOT EXISTS classification TEXT NOT NULL DEFAULT 'L1'
+  CHECK (classification IN ('L0','L1','L2','L3'));
+ALTER TABLE pages ADD COLUMN IF NOT EXISTS confidence NUMERIC(5,4) NOT NULL DEFAULT 0.8000;
+ALTER TABLE pages ADD COLUMN IF NOT EXISTS provenance JSONB NOT NULL DEFAULT '{}'::jsonb;
+ALTER TABLE pages ADD COLUMN IF NOT EXISTS object_hash TEXT;
+ALTER TABLE pages ADD COLUMN IF NOT EXISTS last_ingested_at TIMESTAMPTZ;
+ALTER TABLE pages ADD COLUMN IF NOT EXISTS org_id TEXT DEFAULT 'default';
+ALTER TABLE pages ADD COLUMN IF NOT EXISTS bu_id TEXT;
+ALTER TABLE pages ADD COLUMN IF NOT EXISTS workspace_id TEXT;
+ALTER TABLE pages ADD COLUMN IF NOT EXISTS author_entity_id UUID;
+ALTER TABLE pages ADD COLUMN IF NOT EXISTS reviewer_entity_id UUID;
+ALTER TABLE pages ADD COLUMN IF NOT EXISTS retention_policy_id TEXT;
+ALTER TABLE pages ADD COLUMN IF NOT EXISTS legal_hold_until TIMESTAMPTZ;
+ALTER TABLE pages ADD COLUMN IF NOT EXISTS trust_tier TEXT NOT NULL DEFAULT 'raw'
+  CHECK (trust_tier IN ('raw','draft','published','verified','inferred'));
+
+CREATE UNIQUE INDEX IF NOT EXISTS pages_enterprise_object_uidx
+  ON pages (source_id, enterprise_source_type, enterprise_source_ref)
+  WHERE enterprise_source_type IS NOT NULL
+    AND enterprise_source_ref IS NOT NULL
+    AND deleted_at IS NULL;
+
+CREATE INDEX IF NOT EXISTS pages_workspace_idx
+  ON pages(workspace_id, deleted_at) WHERE deleted_at IS NULL;
+
+CREATE INDEX IF NOT EXISTS pages_classification_idx
+  ON pages(classification, deleted_at) WHERE deleted_at IS NULL;
+
+CREATE TABLE IF NOT EXISTS enterprise_apps (
+  app_id TEXT PRIMARY KEY,
+  app_type TEXT NOT NULL CHECK (app_type IN (
+    'feishu','dingtalk','wecom','tencent-meeting',
+    'crm-shenxiao','crm-fenxiang','crm-custom'
+  )),
+  display_name TEXT NOT NULL,
+  credentials JSONB NOT NULL DEFAULT '{}'::jsonb,
+  api_base_url TEXT,
+  webhook_callback_url TEXT,
+  config JSONB NOT NULL DEFAULT '{}'::jsonb,
+  enabled BOOLEAN NOT NULL DEFAULT true,
+  bot_enabled BOOLEAN NOT NULL DEFAULT false,
+  push_enabled BOOLEAN NOT NULL DEFAULT false,
+  deleted_at TIMESTAMPTZ,
+  consecutive_errors INTEGER NOT NULL DEFAULT 0,
+  circuit_open_until TIMESTAMPTZ,
+  circuit_threshold INTEGER NOT NULL DEFAULT 5,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS enterprise_oauth_tokens (
+  app_id TEXT NOT NULL REFERENCES enterprise_apps(app_id) ON DELETE CASCADE,
+  token_kind TEXT NOT NULL CHECK (token_kind IN (
+    'tenant_access','user_access','app_access','refresh'
+  )),
+  scope_key TEXT NOT NULL,
+  access_token TEXT NOT NULL,
+  refresh_token TEXT,
+  expires_at TIMESTAMPTZ NOT NULL,
+  scopes TEXT[] NOT NULL DEFAULT '{}'::text[],
+  metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+  PRIMARY KEY (app_id, token_kind, scope_key)
+);
+
+CREATE INDEX IF NOT EXISTS enterprise_oauth_tokens_expires_idx
+  ON enterprise_oauth_tokens (expires_at)
+  WHERE expires_at IS NOT NULL;
+
+CREATE TABLE IF NOT EXISTS enterprise_ingest_sources (
+  ingest_source_id TEXT PRIMARY KEY,
+  parent_app_id TEXT REFERENCES enterprise_apps(app_id),
+  ingest_source_type TEXT NOT NULL,
+  display_name TEXT NOT NULL,
+  connector_config JSONB NOT NULL DEFAULT '{}'::jsonb,
+  cursor_state JSONB NOT NULL DEFAULT '{}'::jsonb,
+  webhook_subscriptions JSONB DEFAULT '[]'::jsonb,
+  sync_enabled BOOLEAN NOT NULL DEFAULT true,
+  deleted_at TIMESTAMPTZ,
+  last_success_at TIMESTAMPTZ,
+  last_error_at TIMESTAMPTZ,
+  last_error TEXT,
+  consecutive_errors INTEGER NOT NULL DEFAULT 0,
+  circuit_open_until TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS enterprise_ingest_objects (
+  ingest_source_id TEXT NOT NULL REFERENCES enterprise_ingest_sources(ingest_source_id) ON DELETE CASCADE,
+  external_id TEXT NOT NULL,
+  object_type TEXT NOT NULL,
+  version_ref TEXT,
+  content_hash TEXT NOT NULL,
+  page_slug TEXT,
+  status TEXT NOT NULL DEFAULT 'seen'
+    CHECK (status IN ('seen','changed','ingested','failed','skipped','deleted')),
+  raw_ref TEXT,
+  first_seen_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  last_seen_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  last_ingested_at TIMESTAMPTZ,
+  error TEXT,
+  metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+  PRIMARY KEY (ingest_source_id, external_id)
+);
+
+CREATE INDEX IF NOT EXISTS enterprise_ingest_objects_status_idx
+  ON enterprise_ingest_objects(status);
+CREATE INDEX IF NOT EXISTS enterprise_ingest_objects_hash_idx
+  ON enterprise_ingest_objects(content_hash);
+CREATE INDEX IF NOT EXISTS enterprise_ingest_objects_seen_brin_idx
+  ON enterprise_ingest_objects(last_seen_at);
+
+CREATE TABLE IF NOT EXISTS enterprise_entity_aliases (
+  entity_slug TEXT NOT NULL,
+  entity_type TEXT NOT NULL,
+  alias TEXT NOT NULL,
+  alias_norm TEXT GENERATED ALWAYS AS (
+    lower(regexp_replace(alias, '\\s+', ' ', 'g'))
+  ) STORED,
+  ingest_source_type TEXT,
+  confidence NUMERIC(5,4) NOT NULL DEFAULT 0.8000,
+  metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (entity_type, alias_norm)
+);
+
+CREATE INDEX IF NOT EXISTS entity_aliases_slug_idx
+  ON enterprise_entity_aliases(entity_slug);
+CREATE INDEX IF NOT EXISTS entity_aliases_trgm_idx
+  ON enterprise_entity_aliases USING gin (alias gin_trgm_ops);
+
+CREATE TABLE IF NOT EXISTS enterprise_fact_conflicts (
+  id BIGSERIAL PRIMARY KEY,
+  entity_slug TEXT NOT NULL,
+  fact_key TEXT NOT NULL,
+  conflict_hash TEXT NOT NULL,
+  competing_values JSONB NOT NULL,
+  winning_value JSONB,
+  winning_source TEXT,
+  status TEXT NOT NULL DEFAULT 'open'
+    CHECK (status IN ('open','resolved','ignored','deferred')),
+  severity INTEGER NOT NULL DEFAULT 2 CHECK (severity BETWEEN 1 AND 5),
+  evidence_page_slugs TEXT[] NOT NULL DEFAULT '{}'::text[],
+  detected_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  resolved_at TIMESTAMPTZ,
+  resolved_by_executive_id TEXT,
+  resolver_note TEXT,
+  UNIQUE (entity_slug, fact_key, conflict_hash)
+);
+
+CREATE INDEX IF NOT EXISTS fact_conflicts_status_idx
+  ON enterprise_fact_conflicts(status, severity DESC, detected_at DESC);
+
+CREATE TABLE IF NOT EXISTS executives (
+  executive_id TEXT PRIMARY KEY,
+  email TEXT NOT NULL,
+  display_name TEXT NOT NULL,
+  role TEXT NOT NULL,
+  soul_path TEXT NOT NULL,
+  access_policy_path TEXT NOT NULL,
+  preferences JSONB NOT NULL DEFAULT '{}'::jsonb,
+  timezone TEXT DEFAULT 'Asia/Shanghai',
+  locale TEXT DEFAULT 'zh-CN',
+  department TEXT,
+  deputies TEXT[] DEFAULT '{}'::text[],
+  feishu_user_id TEXT,
+  dingtalk_user_id TEXT,
+  wecom_user_id TEXT,
+  push_preferences JSONB NOT NULL DEFAULT '{}'::jsonb,
+  active BOOLEAN NOT NULL DEFAULT true,
+  deleted_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS executives_email_lower_uidx
+  ON executives (lower(email)) WHERE deleted_at IS NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS executives_feishu_uidx
+  ON executives (feishu_user_id) WHERE feishu_user_id IS NOT NULL AND deleted_at IS NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS executives_dingtalk_uidx
+  ON executives (dingtalk_user_id) WHERE dingtalk_user_id IS NOT NULL AND deleted_at IS NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS executives_wecom_uidx
+  ON executives (wecom_user_id) WHERE wecom_user_id IS NOT NULL AND deleted_at IS NULL;
+
+ALTER TABLE oauth_clients
+  ADD COLUMN IF NOT EXISTS executive_id TEXT REFERENCES executives(executive_id);
+
+ALTER TABLE oauth_tokens
+  ADD COLUMN IF NOT EXISTS executive_id TEXT REFERENCES executives(executive_id);
+
+ALTER TABLE mcp_request_log
+  ADD COLUMN IF NOT EXISTS executive_id TEXT;
+
+ALTER TABLE mcp_request_log
+  ADD COLUMN IF NOT EXISTS executive_role TEXT;
+
+CREATE INDEX IF NOT EXISTS mcp_request_log_executive_idx
+  ON mcp_request_log(executive_id, created_at DESC);
 `;
 
 /**

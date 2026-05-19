@@ -17,6 +17,7 @@ import { slugifyPath } from './sync.ts';
 interface Migration {
   version: number;
   name: string;
+  description?: string;
   /** Engine-agnostic SQL. Used when `sqlFor` is absent. Set to '' for handler-only or sqlFor-only migrations. */
   sql: string;
   /**
@@ -107,6 +108,341 @@ export class MigrationRetryExhausted extends Error {
     this.name = 'MigrationRetryExhausted';
   }
 }
+
+const EBRAIN_V200_COMMON_TABLES_SQL = `
+  CREATE TABLE IF NOT EXISTS enterprise_apps (
+    app_id text PRIMARY KEY,
+    app_type text NOT NULL CHECK (app_type IN (
+      'feishu','dingtalk','wecom','tencent-meeting',
+      'crm-shenxiao','crm-fenxiang','crm-custom'
+    )),
+    display_name text NOT NULL,
+    credentials jsonb NOT NULL DEFAULT '{}'::jsonb,
+    api_base_url text,
+    webhook_callback_url text,
+    config jsonb NOT NULL DEFAULT '{}'::jsonb,
+    enabled boolean NOT NULL DEFAULT true,
+    bot_enabled boolean NOT NULL DEFAULT false,
+    push_enabled boolean NOT NULL DEFAULT false,
+    deleted_at timestamptz,
+    consecutive_errors int NOT NULL DEFAULT 0,
+    circuit_open_until timestamptz,
+    circuit_threshold int NOT NULL DEFAULT 5,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now()
+  );
+
+  CREATE TABLE IF NOT EXISTS enterprise_oauth_tokens (
+    app_id text NOT NULL REFERENCES enterprise_apps(app_id) ON DELETE CASCADE,
+    token_kind text NOT NULL CHECK (token_kind IN (
+      'tenant_access','user_access','app_access','refresh'
+    )),
+    scope_key text NOT NULL,
+    access_token text NOT NULL,
+    refresh_token text,
+    expires_at timestamptz NOT NULL,
+    scopes text[] NOT NULL DEFAULT '{}'::text[],
+    metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
+    PRIMARY KEY (app_id, token_kind, scope_key)
+  );
+
+  CREATE INDEX IF NOT EXISTS enterprise_oauth_tokens_expires_idx
+    ON enterprise_oauth_tokens (expires_at)
+    WHERE expires_at IS NOT NULL;
+
+  CREATE TABLE IF NOT EXISTS enterprise_ingest_sources (
+    ingest_source_id text PRIMARY KEY,
+    parent_app_id text REFERENCES enterprise_apps(app_id),
+    ingest_source_type text NOT NULL,
+    display_name text NOT NULL,
+    connector_config jsonb NOT NULL DEFAULT '{}'::jsonb,
+    cursor_state jsonb NOT NULL DEFAULT '{}'::jsonb,
+    webhook_subscriptions jsonb DEFAULT '[]'::jsonb,
+    sync_enabled boolean NOT NULL DEFAULT true,
+    deleted_at timestamptz,
+    last_success_at timestamptz,
+    last_error_at timestamptz,
+    last_error text,
+    consecutive_errors int NOT NULL DEFAULT 0,
+    circuit_open_until timestamptz,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now()
+  );
+
+  CREATE TABLE IF NOT EXISTS enterprise_ingest_objects (
+    ingest_source_id text NOT NULL REFERENCES enterprise_ingest_sources(ingest_source_id) ON DELETE CASCADE,
+    external_id text NOT NULL,
+    object_type text NOT NULL,
+    version_ref text,
+    content_hash text NOT NULL,
+    page_slug text,
+    status text NOT NULL DEFAULT 'seen'
+      CHECK (status IN ('seen','changed','ingested','failed','skipped','deleted')),
+    raw_ref text,
+    first_seen_at timestamptz NOT NULL DEFAULT now(),
+    last_seen_at timestamptz NOT NULL DEFAULT now(),
+    last_ingested_at timestamptz,
+    error text,
+    metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
+    PRIMARY KEY (ingest_source_id, external_id)
+  );
+
+  CREATE INDEX IF NOT EXISTS enterprise_ingest_objects_status_idx
+    ON enterprise_ingest_objects(status);
+  CREATE INDEX IF NOT EXISTS enterprise_ingest_objects_hash_idx
+    ON enterprise_ingest_objects(content_hash);
+
+  CREATE TABLE IF NOT EXISTS enterprise_entity_aliases (
+    entity_slug text NOT NULL,
+    entity_type text NOT NULL,
+    alias text NOT NULL,
+    alias_norm text GENERATED ALWAYS AS (
+      lower(regexp_replace(alias, '\\s+', ' ', 'g'))
+    ) STORED,
+    ingest_source_type text,
+    confidence numeric(5,4) NOT NULL DEFAULT 0.8000,
+    metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    PRIMARY KEY (entity_type, alias_norm)
+  );
+
+  CREATE INDEX IF NOT EXISTS entity_aliases_slug_idx
+    ON enterprise_entity_aliases(entity_slug);
+  CREATE INDEX IF NOT EXISTS entity_aliases_trgm_idx
+    ON enterprise_entity_aliases USING gin (alias gin_trgm_ops);
+
+  CREATE TABLE IF NOT EXISTS enterprise_fact_conflicts (
+    id bigserial PRIMARY KEY,
+    entity_slug text NOT NULL,
+    fact_key text NOT NULL,
+    conflict_hash text NOT NULL,
+    competing_values jsonb NOT NULL,
+    winning_value jsonb,
+    winning_source text,
+    status text NOT NULL DEFAULT 'open'
+      CHECK (status IN ('open','resolved','ignored','deferred')),
+    severity int NOT NULL DEFAULT 2 CHECK (severity BETWEEN 1 AND 5),
+    evidence_page_slugs text[] NOT NULL DEFAULT '{}'::text[],
+    detected_at timestamptz NOT NULL DEFAULT now(),
+    resolved_at timestamptz,
+    resolved_by_executive_id text,
+    resolver_note text,
+    UNIQUE (entity_slug, fact_key, conflict_hash)
+  );
+
+  CREATE INDEX IF NOT EXISTS fact_conflicts_status_idx
+    ON enterprise_fact_conflicts(status, severity DESC, detected_at DESC);
+
+  CREATE TABLE IF NOT EXISTS executives (
+    executive_id text PRIMARY KEY,
+    email text NOT NULL,
+    display_name text NOT NULL,
+    role text NOT NULL,
+    soul_path text NOT NULL,
+    access_policy_path text NOT NULL,
+    preferences jsonb NOT NULL DEFAULT '{}'::jsonb,
+    timezone text DEFAULT 'Asia/Shanghai',
+    locale text DEFAULT 'zh-CN',
+    department text,
+    deputies text[] DEFAULT '{}'::text[],
+    feishu_user_id text,
+    dingtalk_user_id text,
+    wecom_user_id text,
+    push_preferences jsonb NOT NULL DEFAULT '{}'::jsonb,
+    active boolean NOT NULL DEFAULT true,
+    deleted_at timestamptz,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now()
+  );
+
+  CREATE UNIQUE INDEX IF NOT EXISTS executives_email_lower_uidx
+    ON executives (lower(email)) WHERE deleted_at IS NULL;
+  CREATE UNIQUE INDEX IF NOT EXISTS executives_feishu_uidx
+    ON executives (feishu_user_id) WHERE feishu_user_id IS NOT NULL AND deleted_at IS NULL;
+  CREATE UNIQUE INDEX IF NOT EXISTS executives_dingtalk_uidx
+    ON executives (dingtalk_user_id) WHERE dingtalk_user_id IS NOT NULL AND deleted_at IS NULL;
+  CREATE UNIQUE INDEX IF NOT EXISTS executives_wecom_uidx
+    ON executives (wecom_user_id) WHERE wecom_user_id IS NOT NULL AND deleted_at IS NULL;
+`;
+
+const EBRAIN_V200_COMMON_VIEW_SQL = `
+  CREATE OR REPLACE VIEW enterprise_fact_claims_view AS
+    SELECT
+      f.id              AS fact_id,
+      f.source_id,
+      p.id              AS page_id,
+      p.slug            AS page_slug,
+      f.entity_slug,
+      f.fact            AS claim_text,
+      f.kind,
+      f.claim_metric,
+      f.claim_value,
+      f.claim_unit,
+      f.claim_period,
+      f.confidence,
+      f.source          AS fact_source,
+      f.source_session,
+      f.source_markdown_slug,
+      f.valid_from,
+      f.valid_until,
+      p.enterprise_source_type,
+      p.last_ingested_at AS observed_at
+    FROM facts f
+    JOIN pages p
+      ON p.slug = f.source_markdown_slug
+     AND p.source_id = f.source_id
+    WHERE p.source_id = 'enterprise'
+      AND p.deleted_at IS NULL
+      AND f.valid_until IS NULL;
+`;
+
+const EBRAIN_V200_POSTGRES_SQL = `
+  CREATE EXTENSION IF NOT EXISTS pgcrypto;
+  CREATE EXTENSION IF NOT EXISTS pg_trgm;
+
+  ALTER TABLE pages ADD COLUMN IF NOT EXISTS enterprise_source_type text;
+  ALTER TABLE pages ADD COLUMN IF NOT EXISTS enterprise_source_ref text;
+  ALTER TABLE pages ADD COLUMN IF NOT EXISTS owner_org_unit text;
+  ALTER TABLE pages ADD COLUMN IF NOT EXISTS classification text NOT NULL DEFAULT 'L1';
+  ALTER TABLE pages ADD COLUMN IF NOT EXISTS confidence numeric(5,4) NOT NULL DEFAULT 0.8000;
+  ALTER TABLE pages ADD COLUMN IF NOT EXISTS provenance jsonb NOT NULL DEFAULT '{}'::jsonb;
+  ALTER TABLE pages ADD COLUMN IF NOT EXISTS object_hash text;
+  ALTER TABLE pages ADD COLUMN IF NOT EXISTS last_ingested_at timestamptz;
+  ALTER TABLE pages ADD COLUMN IF NOT EXISTS org_id text DEFAULT 'default';
+  ALTER TABLE pages ADD COLUMN IF NOT EXISTS bu_id text;
+  ALTER TABLE pages ADD COLUMN IF NOT EXISTS workspace_id text;
+  ALTER TABLE pages ADD COLUMN IF NOT EXISTS author_entity_id uuid;
+  ALTER TABLE pages ADD COLUMN IF NOT EXISTS reviewer_entity_id uuid;
+  ALTER TABLE pages ADD COLUMN IF NOT EXISTS retention_policy_id text;
+  ALTER TABLE pages ADD COLUMN IF NOT EXISTS legal_hold_until timestamptz;
+  ALTER TABLE pages ADD COLUMN IF NOT EXISTS trust_tier text NOT NULL DEFAULT 'raw';
+
+  DO $$ BEGIN
+    IF NOT EXISTS (
+      SELECT 1 FROM pg_constraint
+      WHERE conname = 'pages_classification_check'
+        AND conrelid = 'pages'::regclass
+    ) THEN
+      ALTER TABLE pages
+        ADD CONSTRAINT pages_classification_check
+        CHECK (classification IN ('L0','L1','L2','L3'));
+    END IF;
+  END $$;
+
+  DO $$ BEGIN
+    IF NOT EXISTS (
+      SELECT 1 FROM pg_constraint
+      WHERE conname = 'pages_trust_tier_check'
+        AND conrelid = 'pages'::regclass
+    ) THEN
+      ALTER TABLE pages
+        ADD CONSTRAINT pages_trust_tier_check
+        CHECK (trust_tier IN ('raw','draft','published','verified','inferred'));
+    END IF;
+  END $$;
+
+  CREATE UNIQUE INDEX IF NOT EXISTS pages_enterprise_object_uidx
+    ON pages (source_id, enterprise_source_type, enterprise_source_ref)
+    WHERE enterprise_source_type IS NOT NULL
+      AND enterprise_source_ref IS NOT NULL
+      AND deleted_at IS NULL;
+
+  CREATE INDEX IF NOT EXISTS pages_workspace_idx
+    ON pages(workspace_id, deleted_at) WHERE deleted_at IS NULL;
+
+  CREATE INDEX IF NOT EXISTS pages_classification_idx
+    ON pages(classification, deleted_at) WHERE deleted_at IS NULL;
+
+  ${EBRAIN_V200_COMMON_TABLES_SQL}
+
+  CREATE INDEX IF NOT EXISTS enterprise_ingest_objects_seen_brin_idx
+    ON enterprise_ingest_objects USING brin(last_seen_at);
+
+  ALTER TABLE enterprise_apps ENABLE ROW LEVEL SECURITY;
+  ALTER TABLE enterprise_oauth_tokens ENABLE ROW LEVEL SECURITY;
+  ALTER TABLE enterprise_ingest_sources ENABLE ROW LEVEL SECURITY;
+  ALTER TABLE enterprise_ingest_objects ENABLE ROW LEVEL SECURITY;
+  ALTER TABLE enterprise_entity_aliases ENABLE ROW LEVEL SECURITY;
+  ALTER TABLE enterprise_fact_conflicts ENABLE ROW LEVEL SECURITY;
+  ALTER TABLE executives ENABLE ROW LEVEL SECURITY;
+
+  COMMENT ON TABLE enterprise_oauth_tokens IS
+    'GBRAIN:RLS_EXEMPT reason=encrypted oauth tokens, service-role only access';
+  COMMENT ON TABLE executives IS
+    'GBRAIN:RLS_EXEMPT reason=C-Level identity, managed by admin role only';
+
+  ALTER TABLE oauth_clients
+    ADD COLUMN IF NOT EXISTS executive_id text REFERENCES executives(executive_id);
+
+  ALTER TABLE oauth_tokens
+    ADD COLUMN IF NOT EXISTS executive_id text REFERENCES executives(executive_id);
+
+  ALTER TABLE mcp_request_log
+    ADD COLUMN IF NOT EXISTS executive_id text;
+
+  ALTER TABLE mcp_request_log
+    ADD COLUMN IF NOT EXISTS executive_role text;
+
+  CREATE INDEX IF NOT EXISTS mcp_request_log_executive_idx
+    ON mcp_request_log(executive_id, created_at DESC);
+
+  ${EBRAIN_V200_COMMON_VIEW_SQL}
+`;
+
+const EBRAIN_V200_PGLITE_SQL = `
+  ALTER TABLE pages ADD COLUMN IF NOT EXISTS enterprise_source_type text;
+  ALTER TABLE pages ADD COLUMN IF NOT EXISTS enterprise_source_ref text;
+  ALTER TABLE pages ADD COLUMN IF NOT EXISTS owner_org_unit text;
+  ALTER TABLE pages ADD COLUMN IF NOT EXISTS classification text NOT NULL DEFAULT 'L1'
+    CHECK (classification IN ('L0','L1','L2','L3'));
+  ALTER TABLE pages ADD COLUMN IF NOT EXISTS confidence numeric(5,4) NOT NULL DEFAULT 0.8000;
+  ALTER TABLE pages ADD COLUMN IF NOT EXISTS provenance jsonb NOT NULL DEFAULT '{}'::jsonb;
+  ALTER TABLE pages ADD COLUMN IF NOT EXISTS object_hash text;
+  ALTER TABLE pages ADD COLUMN IF NOT EXISTS last_ingested_at timestamptz;
+  ALTER TABLE pages ADD COLUMN IF NOT EXISTS org_id text DEFAULT 'default';
+  ALTER TABLE pages ADD COLUMN IF NOT EXISTS bu_id text;
+  ALTER TABLE pages ADD COLUMN IF NOT EXISTS workspace_id text;
+  ALTER TABLE pages ADD COLUMN IF NOT EXISTS author_entity_id uuid;
+  ALTER TABLE pages ADD COLUMN IF NOT EXISTS reviewer_entity_id uuid;
+  ALTER TABLE pages ADD COLUMN IF NOT EXISTS retention_policy_id text;
+  ALTER TABLE pages ADD COLUMN IF NOT EXISTS legal_hold_until timestamptz;
+  ALTER TABLE pages ADD COLUMN IF NOT EXISTS trust_tier text NOT NULL DEFAULT 'raw'
+    CHECK (trust_tier IN ('raw','draft','published','verified','inferred'));
+
+  CREATE UNIQUE INDEX IF NOT EXISTS pages_enterprise_object_uidx
+    ON pages (source_id, enterprise_source_type, enterprise_source_ref)
+    WHERE enterprise_source_type IS NOT NULL
+      AND enterprise_source_ref IS NOT NULL
+      AND deleted_at IS NULL;
+
+  CREATE INDEX IF NOT EXISTS pages_workspace_idx
+    ON pages(workspace_id, deleted_at) WHERE deleted_at IS NULL;
+
+  CREATE INDEX IF NOT EXISTS pages_classification_idx
+    ON pages(classification, deleted_at) WHERE deleted_at IS NULL;
+
+  ${EBRAIN_V200_COMMON_TABLES_SQL}
+
+  CREATE INDEX IF NOT EXISTS enterprise_ingest_objects_seen_brin_idx
+    ON enterprise_ingest_objects(last_seen_at);
+
+  ALTER TABLE oauth_clients
+    ADD COLUMN IF NOT EXISTS executive_id text REFERENCES executives(executive_id);
+
+  ALTER TABLE oauth_tokens
+    ADD COLUMN IF NOT EXISTS executive_id text REFERENCES executives(executive_id);
+
+  ALTER TABLE mcp_request_log
+    ADD COLUMN IF NOT EXISTS executive_id text;
+
+  ALTER TABLE mcp_request_log
+    ADD COLUMN IF NOT EXISTS executive_role text;
+
+  CREATE INDEX IF NOT EXISTS mcp_request_log_executive_idx
+    ON mcp_request_log(executive_id, created_at DESC);
+
+  ${EBRAIN_V200_COMMON_VIEW_SQL}
+`;
 
 // Migrations are embedded here, not loaded from files.
 // Add new migrations at the end. Never modify existing ones.
@@ -3544,6 +3880,17 @@ export const MIGRATIONS: Migration[] = [
         ALTER TABLE eval_candidates
           ADD COLUMN IF NOT EXISTS embedding_column TEXT;
       `,
+    },
+  },
+  {
+    version: 200,
+    name: 'v200_ebrain_enterprise_baseline',
+    description: 'Ebrain MVP baseline: pages 16 fields + 6 enterprise tables + executives + view',
+    idempotent: true,
+    sql: '',
+    sqlFor: {
+      postgres: EBRAIN_V200_POSTGRES_SQL,
+      pglite: EBRAIN_V200_PGLITE_SQL,
     },
   },
 ];
