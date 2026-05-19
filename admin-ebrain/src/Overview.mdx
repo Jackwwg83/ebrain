@@ -1,0 +1,51 @@
+import { Meta } from '@storybook/blocks';
+
+<Meta title="Overview" />
+
+# Ebrain Admin Dashboard 设计稿
+
+基于 § 9 决策的 7 个 page + 关键交互组件。**纯视觉 mock，不接真实 API**。
+
+## 设计原则
+
+- **暗色主题**（保留 gbrain 风格，admin 给运维看不是终端用户）
+- **antd 5**（中国 enterprise UI 标准，运维熟悉）
+- **中文默认**，右上角支持切换 zh-CN / en-US
+- **桌面优先**，不做移动响应式（admin 场景不需要）
+
+## 7 个 Page
+
+| Page | 关键交互 |
+|---|---|
+| `Login` | 飞书 / 钉钉 / 企微 SSO + OIDC fallback |
+| `Dashboard` | 4 stat card + SSE 实时活动 + 5 app 健康 + Dream Cycle |
+| `Executives` | 高管列表 + 注册 + Profile drawer + SOUL Audit 入口 |
+| `EnterpriseApps` | 5 个 IM/CRM 应用 + 5 步注册 wizard + Token 刷新 |
+| `Ingestion` | 20+ 子 Connector 健康度 + 手动同步 |
+| `FactConflicts` | 冲突列表 + Resolve drawer（选 winning value + 写回 compiled truth）|
+| `Agents` | OAuth client 管理 + 一键导出 Claude Desktop / Cursor / 通用 JSON 配置 |
+| `RequestLog` | 全部请求审计 + 按 executive_id / 操作类型 / 状态过滤 |
+
+## 颜色系统
+
+- 主色 `#1f6fff` — 链接 / 强调 / primary 按钮
+- 成功 `#20a84a`
+- 警告 `#f59f18`
+- 危险 `#e5484d`
+- 背景 `#f6f8ff` / Card `#ffffff` / Border `#e0e4ee`
+
+## 组件清单
+
+- **AppLayout** — 侧边栏 + 顶栏（含 SSO 用户卡 + 语言切换）
+- **StatCard** — 4 种 tone（default / success / warn / danger）+ trend 指示
+- **StatusBadge / SeverityBadge** — 统一状态指示
+
+## 怎么用
+
+1. `npm install`（首次约 2-3 分钟）
+2. `npm run storybook` 启动 dev server（http://localhost:6006）
+3. 左侧导航栏点击 7 个 Page Story 查看效果
+
+## 设计 to 落地
+
+每个 Page 的 React + TypeScript + antd 代码就在 `src/pages/*.tsx` 下，**可以直接搬到 admin/src/ebrain/ 目录** —— 改下 mock data 接 API 即可上线。

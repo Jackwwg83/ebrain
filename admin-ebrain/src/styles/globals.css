@@ -1,0 +1,65 @@
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  background:
+    radial-gradient(at 20% 0%, rgba(31, 111, 255, 0.06) 0%, transparent 40%),
+    radial-gradient(at 80% 100%, rgba(14, 165, 233, 0.05) 0%, transparent 40%),
+    #f6f8ff;
+  color: #172033;
+  font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB',
+    'Microsoft YaHei', 'Segoe UI', Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background: rgba(31, 111, 255, 0.18);
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: #f6f8ff;
+}
+::-webkit-scrollbar-thumb {
+  background: #c4cee9;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #a0b0d0;
+}
+
+/* Hide scrollbar in storybook docs */
+.sb-show-main {
+  background: #f6f8ff !important;
+}
+
+.sb-main-fullscreen {
+  padding: 0 !important;
+}
+
+/* Code font for IDs / tokens */
+.mono {
+  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12.5px;
+  color: #4b5875;
+}
+
+/* Status dots */
+.status-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-right: 6px;
+}
+.status-dot.ok { background: #52c41a; box-shadow: 0 0 6px #52c41a55; }
+.status-dot.warn { background: #f59f18; box-shadow: 0 0 6px #f59f1855; }
+.status-dot.error { background: #e5484d; box-shadow: 0 0 6px #e5484d55; }
+.status-dot.idle { background: #7a86a3; }
