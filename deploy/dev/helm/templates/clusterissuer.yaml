@@ -1,0 +1,27 @@
+{{- if .Values.certManager.createClusterIssuer }}
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: {{ .Values.ingress.clusterIssuer }}
+  labels:
+    {{- include "ebrain.labels" . | nindent 4 }}
+spec:
+  acme:
+    email: {{ .Values.certManager.email }}
+    server: {{ .Values.certManager.server }}
+    privateKeySecretRef:
+      name: {{ .Values.ingress.clusterIssuer }}-account-key
+    solvers:
+      - dns01:
+          webhook:
+            groupName: {{ .Values.certManager.alidns.groupName }}
+            solverName: {{ .Values.certManager.alidns.solverName }}
+            config:
+              region: {{ .Values.certManager.alidns.region }}
+              accessKeyIdSecretRef:
+                name: {{ .Values.certManager.alidns.accessSecretName }}
+                key: {{ .Values.certManager.alidns.accessKeyIdKey }}
+              accessKeySecretSecretRef:
+                name: {{ .Values.certManager.alidns.accessSecretName }}
+                key: {{ .Values.certManager.alidns.accessKeySecretKey }}
+{{- end }}

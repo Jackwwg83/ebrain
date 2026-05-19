@@ -1,0 +1,12 @@
+# Purpose: example PM-supplied Terraform variables for Stage A5 dev resources.
+
+region = "cn-shanghai"
+zone_id = "cn-shanghai-m"
+vpc_cidr = "10.0.0.0/16"
+vswitch_cidr = "10.0.1.0/24"
+ack_worker_instance_type = "ecs.g7.xlarge"
+rds_instance_type = "pg.x4.large.2"
+domain_name = "ebrain-dev.your-company.com"
+
+# Replace before terraform apply. Do not commit real values.
+rds_admin_password = "REPLACE_WITH_STRONG_PASSWORD"

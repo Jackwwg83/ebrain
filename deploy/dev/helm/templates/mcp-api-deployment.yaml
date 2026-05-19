@@ -1,0 +1,112 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mcp-api
+  labels:
+    {{- include "ebrain.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "ebrain.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "ebrain.selectorLabels" . | nindent 8 }}
+    spec:
+      serviceAccountName: {{ .Values.serviceAccount.name }}
+      securityContext:
+        fsGroup: 1000
+      containers:
+        - name: mcp-api
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["bun"]
+          args:
+            - src/cli.ts
+            - serve
+            - --http
+            - --bind
+            - 0.0.0.0
+            - --port
+            - "{{ .Values.service.targetPort }}"
+            - --public-url
+            - {{ .Values.publicUrl | quote }}
+            - --suppress-bootstrap-token
+          ports:
+            - name: http
+              containerPort: {{ .Values.service.targetPort }}
+          envFrom:
+            - configMapRef:
+                name: ebrain-config
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.externalSecrets.rds.secretName }}
+                  key: DATABASE_URL
+            - name: GBRAIN_DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.externalSecrets.rds.secretName }}
+                  key: DATABASE_URL
+            - name: EBRAIN_SECRETS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.externalSecrets.runtime.secretName }}
+                  key: EBRAIN_SECRETS_KEY
+            - name: GBRAIN_ADMIN_BOOTSTRAP_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.externalSecrets.runtime.secretName }}
+                  key: GBRAIN_ADMIN_BOOTSTRAP_TOKEN
+            - name: OPENAI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.externalSecrets.runtime.secretName }}
+                  key: OPENAI_API_KEY
+                  optional: true
+            - name: ANTHROPIC_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.externalSecrets.runtime.secretName }}
+                  key: ANTHROPIC_API_KEY
+                  optional: true
+            - name: DASHSCOPE_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.externalSecrets.runtime.secretName }}
+                  key: DASHSCOPE_API_KEY
+                  optional: true
+          volumeMounts:
+            - name: brain-repo
+              mountPath: {{ .Values.persistence.mountPath }}
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 20
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 60
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 3
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+            runAsNonRoot: true
+            runAsUser: 1000
+            capabilities:
+              drop: ["ALL"]
+      volumes:
+        - name: brain-repo
+          persistentVolumeClaim:
+            claimName: ebrain-brain-repo

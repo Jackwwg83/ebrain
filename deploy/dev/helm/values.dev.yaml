@@ -1,0 +1,97 @@
+---
+replicaCount: 1
+
+image:
+  repository: acr.example.com/ebrain
+  tag: "0.36.3.0-dev-placeholder"
+  pullPolicy: IfNotPresent
+
+imagePullSecret:
+  name: acr-pull-secret
+
+serviceAccount:
+  name: mcp-api
+
+service:
+  port: 80
+  targetPort: 3131
+
+ingress:
+  enabled: true
+  className: nginx
+  host: ebrain-dev.your-company.com
+  tlsSecretName: ebrain-dev-tls
+  clusterIssuer: letsencrypt-prod
+
+publicUrl: https://ebrain-dev.your-company.com
+
+resources:
+  requests:
+    cpu: 500m
+    memory: 1Gi
+  limits:
+    cpu: "1"
+    memory: 2Gi
+
+persistence:
+  storageClassName: alicloud-nas
+  size: 100Gi
+  accessModes:
+    - ReadWriteMany
+  mountPath: /data/ebrain
+
+config:
+  env: dev
+  logLevel: info
+  gbrainHome: /data/ebrain
+  gbrainPoolSize: "5"
+  nodeEnv: production
+  featureFlags:
+    ebrainEnabled: "true"
+    dingtalkEnabled: "false"
+
+externalSecrets:
+  refreshInterval: 1h
+  secretStore:
+    name: alicloud-kms
+    region: cn-shanghai
+    authSecretName: alicloud-kms-access
+    accessKeyIdKey: access-key-id
+    accessKeySecretKey: access-key-secret
+  rds:
+    secretName: ebrain-rds
+    databaseUrlRemoteKey: ebrain/dev/rds/database-url
+  runtime:
+    secretName: ebrain-runtime
+    ebrainSecretsKeyRemoteKey: ebrain/dev/runtime/ebrain-secrets-key
+    adminBootstrapTokenRemoteKey: ebrain/dev/runtime/admin-bootstrap-token
+    openaiApiKeyRemoteKey: ebrain/dev/providers/openai-api-key
+    anthropicApiKeyRemoteKey: ebrain/dev/providers/anthropic-api-key
+    dashscopeApiKeyRemoteKey: ebrain/dev/providers/dashscope-api-key
+  imagePull:
+    secretName: acr-pull-secret
+    dockerConfigJsonRemoteKey: ebrain/dev/acr/dockerconfigjson
+
+certManager:
+  createClusterIssuer: true
+  email: ops@example.com
+  server: https://acme-v02.api.letsencrypt.org/directory
+  alidns:
+    groupName: acme.alidns.com
+    solverName: alidns
+    region: cn-shanghai
+    accessSecretName: alicloud-dns01-access
+    accessKeyIdKey: access-key-id
+    accessKeySecretKey: access-key-secret
+
+networkPolicy:
+  enabled: true
+  rds:
+    cidr: 10.0.0.0/16
+    port: 5432
+  httpsEgressCidrs:
+    # Replace TEST-NET ranges with company-approved egress IP ranges.
+    # ACK CNI FQDN policies can be used for SaaS provider domains.
+    - 203.0.113.0/24
+    - 198.51.100.0/24
+    - 192.0.2.0/24

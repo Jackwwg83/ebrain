@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ebrain-config
+  labels:
+    {{- include "ebrain.labels" . | nindent 4 }}
+data:
+  EBRAIN_ENV: {{ .Values.config.env | quote }}
+  EBRAIN_ENABLED: {{ .Values.config.featureFlags.ebrainEnabled | quote }}
+  EBRAIN_DINGTALK_ENABLED: {{ .Values.config.featureFlags.dingtalkEnabled | quote }}
+  GBRAIN_HOME: {{ .Values.config.gbrainHome | quote }}
+  GBRAIN_POOL_SIZE: {{ .Values.config.gbrainPoolSize | quote }}
+  LOG_LEVEL: {{ .Values.config.logLevel | quote }}
+  NODE_ENV: {{ .Values.config.nodeEnv | quote }}

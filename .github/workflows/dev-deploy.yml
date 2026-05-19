@@ -1,0 +1,81 @@
+---
+name: Ebrain Dev Deploy
+
+'on':
+  push:
+    branches: [ebrain-mvp, main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  RELEASE_NAME: ebrain-dev
+  NAMESPACE: ebrain-dev
+  VALUES_FILE: deploy/dev/helm/values.dev.yaml
+  ACR_REGISTRY: ${{ secrets.ACR_REGISTRY }}
+  ACR_REPOSITORY: ${{ secrets.ACR_REPOSITORY }}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
+      - name: Docker login to ACR
+        run: |
+          echo "${{ secrets.ACR_PASS }}" \
+            | docker login "${ACR_REGISTRY}" \
+              --username "${{ secrets.ACR_USER }}" \
+              --password-stdin
+      - name: Build image
+        run: |
+          docker build \
+            -f deploy/dev/Dockerfile \
+            -t "${ACR_REGISTRY}/${ACR_REPOSITORY}:${GITHUB_SHA}" \
+            .
+      - name: Push image
+        run: |
+          docker push \
+            "${ACR_REGISTRY}/${ACR_REPOSITORY}:${GITHUB_SHA}"
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
+      - name: Install Helm
+        run: sudo snap install helm --classic
+      - name: Configure kubeconfig
+        run: |
+          mkdir -p "${HOME}/.kube"
+          echo "${{ secrets.KUBE_CONFIG_DATA }}" \
+            | base64 --decode > "${HOME}/.kube/config"
+          chmod 600 "${HOME}/.kube/config"
+      - name: Deploy with Helm
+        run: |
+          helm upgrade --install "${RELEASE_NAME}" deploy/dev/helm \
+            --namespace "${NAMESPACE}" \
+            --create-namespace \
+            --values "${VALUES_FILE}" \
+            --set \
+              "image.repository=${ACR_REGISTRY}/${ACR_REPOSITORY}" \
+            --set "image.tag=${GITHUB_SHA}" \
+            --wait \
+            --atomic
+      - name: Roll back on failure
+        if: failure()
+        run: helm rollback "${RELEASE_NAME}" --namespace "${NAMESPACE}" || true
+
+  smoke:
+    runs-on: ubuntu-latest
+    needs: deploy
+    steps:
+      - name: Smoke /health
+        run: |
+          curl \
+            --fail \
+            --silent \
+            --show-error \
+            --retry 10 \
+            --retry-delay 6 \
+            "https://${{ secrets.EBRAIN_DEV_HOST }}/health"

@@ -545,3 +545,238 @@ git diff 7cba5de2 -- src/core/operations.ts
 git diff 7cba5de2 -- src/mcp/dispatch.ts
 # loader hook moved inside existing try/catch; op handler and error wrapper unchanged
 ```
+
+# Stage A5 Summary - Minimal Deployable Dev Infra + CI/CD
+
+Timestamp: 2026-05-20T07:13:17+08:00
+
+## Scope
+
+Stage A5 added code-side deployment scaffolding only. Codex did not run
+`terraform apply`, `helm install`, `helm upgrade`, `kubectl apply`, or any
+Alibaba Cloud deployment command against a live cluster.
+
+New or updated paths:
+
+- `deploy/dev/README.md`
+- `deploy/dev/Dockerfile`
+- `deploy/dev/helm/Chart.yaml`
+- `deploy/dev/helm/values.yaml`
+- `deploy/dev/helm/values.dev.yaml`
+- `deploy/dev/helm/templates/*.yaml`
+- `deploy/dev/terraform/*.tf`
+- `deploy/dev/terraform/dev.tfvars.example`
+- `deploy/dev/terraform/README.md`
+- `.github/workflows/ci.yml`
+- `.github/workflows/dev-deploy.yml`
+- `scripts/ebrain-dev-up.sh`
+- `scripts/ebrain-dev-deploy.sh`
+- `scripts/ebrain-dev-logs.sh`
+- `EBRAIN_DEV_ENVIRONMENT.md`
+- `STAGE-SUMMARY.md`
+
+No `src/`, `test/`, or `tests/` paths were modified.
+
+Diff stat at commit time:
+
+```text
+36 files changed, 1935 insertions(+)
+```
+
+## Deploy Scaffold
+
+Helm chart:
+
+- Chart name: `ebrain-dev`
+- App version: `0.36.3.0`
+- Workload: one `mcp-api` Deployment replica
+- Resources: request `500m` CPU / `1Gi` memory, limit `1` CPU / `2Gi`
+- Health probes: readiness and liveness probe `/health`
+- Persistence: NAS-backed RWX PVC mounted at `/data/ebrain`
+- Secrets: all runtime credentials are read from External Secrets Operator
+- RBAC: namespace `Role` with only `get` on `secrets`
+- NetworkPolicy: restricts DNS, RDS CIDR, and configured HTTPS egress CIDRs
+
+CI/CD scaffold:
+
+- `.github/workflows/ci.yml`: verify, test, helm lint/template, actionlint,
+  and YAML validation jobs for pull requests.
+- `.github/workflows/dev-deploy.yml`: build image, push to ACR, deploy with
+  `helm upgrade --install --atomic --wait`, and smoke `/health`.
+
+Scripts:
+
+- `scripts/ebrain-dev-up.sh`: PM-run bootstrap path for Terraform + Helm.
+- `scripts/ebrain-dev-deploy.sh`: PM-run manual deploy path for current branch.
+- `scripts/ebrain-dev-logs.sh`: PM-run log tail helper.
+
+## Syntax Verification Evidence
+
+```text
+helm lint deploy/dev/helm
+# 1 chart(s) linted, 0 chart(s) failed
+
+helm template ebrain-dev deploy/dev/helm \
+  --values deploy/dev/helm/values.dev.yaml > /tmp/a5-rendered.yaml
+# exit 0
+
+ruby -e "require 'yaml'; docs = YAML.load_stream(File.read('/tmp/a5-rendered.yaml')); puts \"rendered yaml docs=#{docs.size}\""
+# rendered yaml docs=14
+
+yamllint /tmp/a5-rendered.yaml
+# exit 0
+
+yamllint deploy/dev/helm/values.dev.yaml \
+  .github/workflows/ci.yml \
+  .github/workflows/dev-deploy.yml
+# exit 0
+
+actionlint .github/workflows/ci.yml .github/workflows/dev-deploy.yml
+# exit 0
+
+shellcheck scripts/ebrain-dev-up.sh \
+  scripts/ebrain-dev-deploy.sh \
+  scripts/ebrain-dev-logs.sh
+# exit 0
+```
+
+Rendered manifest resource evidence:
+
+```text
+NetworkPolicy/mcp-api-restricted-egress
+ServiceAccount/mcp-api
+ConfigMap/ebrain-config
+PersistentVolumeClaim/ebrain-brain-repo
+Role/mcp-api-secret-reader
+RoleBinding/mcp-api-secret-reader
+Service/mcp-api
+Deployment/mcp-api
+Ingress/ebrain-dev
+ClusterIssuer/letsencrypt-prod
+ExternalSecret/acr-pull-secret
+ExternalSecret/ebrain-runtime
+ExternalSecret/postgres-rds
+SecretStore/alicloud-kms
+```
+
+Rendered manifest safety checks:
+
+```text
+rg -n "readinessProbe|livenessProbe|/health|resources: \[\"secrets\"\]|verbs:|kind: ClusterRole|kind: NetworkPolicy|egress:" /tmp/a5-rendered.yaml
+# NetworkPolicy present
+# Role resources ["secrets"] with verbs ["get"]
+# readinessProbe /health present
+# livenessProbe /health present
+# no ClusterRole output
+
+rg -n -i "password|secret|token|api[-_ ]?key" /tmp/a5-rendered.yaml | rg -v "<allowed secret reference filters>"
+# no output after filtering Secret/ExternalSecret references and env var names
+```
+
+## Documentation Evidence
+
+`EBRAIN_DEV_ENVIRONMENT.md` now contains:
+
+- Stage A5 five-step launch checklist.
+- GitHub Actions secrets checklist.
+- KMS remote key checklist for RDS, runtime, provider keys, and ACR pull secret.
+- cert-manager AliDNS DNS-01 setup notes.
+- troubleshooting entries for NAT egress, RDS SSL, ACR image pull, and schema
+  migration with `gbrain apply-migrations --force-schema --yes`.
+
+## New Dependencies
+
+- Runtime/package dependencies: none.
+- Lockfile changes: none.
+- Local validation tools installed on the workstation for syntax checks:
+  `helm`, `actionlint`, `yamllint`, and `shellcheck`.
+
+## Known Limits
+
+- Terraform templates were not initialized, planned, or applied. PM must run
+  them in the company Alibaba Cloud account after reviewing variables.
+- The default NetworkPolicy HTTPS CIDRs are documentation placeholders. PM must
+  replace them with company-approved egress ranges or an ACK CNI policy that
+  supports SaaS FQDN rules.
+- `deploy/dev/helm/values*.yaml` uses placeholder hostnames, RDS/KMS references,
+  and ACR repository names. No credential values are committed.
+- No runtime deployment evidence exists yet because Stage A5 explicitly leaves
+  Alibaba Cloud deploy execution to PM.
+
+## PM Action Items
+
+1. Review and fill Terraform variables:
+
+```bash
+cd deploy/dev/terraform
+cp dev.tfvars.example dev.tfvars  # create manually if needed
+terraform init
+terraform plan -var-file=dev.tfvars
+terraform apply -var-file=dev.tfvars
+```
+
+2. Install cluster prerequisites:
+
+```bash
+helm repo add jetstack https://charts.jetstack.io
+helm repo add external-secrets https://charts.external-secrets.io
+helm upgrade --install cert-manager jetstack/cert-manager \
+  --namespace cert-manager \
+  --create-namespace \
+  --set installCRDs=true
+helm upgrade --install external-secrets external-secrets/external-secrets \
+  --namespace external-secrets \
+  --create-namespace
+```
+
+3. Create the Kubernetes provider secrets referenced by Helm:
+
+```bash
+kubectl create namespace ebrain-dev
+kubectl create secret generic alicloud-kms-access \
+  -n ebrain-dev \
+  --from-literal=access-key-id='<redacted>' \
+  --from-literal=access-key-secret='<redacted>'
+kubectl create secret generic alicloud-dns01-access \
+  -n cert-manager \
+  --from-literal=access-key-id='<redacted>' \
+  --from-literal=access-key-secret='<redacted>'
+```
+
+4. Write KMS remote values:
+
+- `ebrain/dev/rds/database-url`
+- `ebrain/dev/runtime/ebrain-secrets-key`
+- `ebrain/dev/runtime/admin-bootstrap-token`
+- `ebrain/dev/providers/openai-api-key`
+- `ebrain/dev/providers/anthropic-api-key`
+- `ebrain/dev/providers/dashscope-api-key`
+- `ebrain/dev/acr/dockerconfigjson`
+
+5. Configure GitHub Actions repository secrets:
+
+- `ACR_REGISTRY`
+- `ACR_REPOSITORY`
+- `ACR_USER`
+- `ACR_PASS`
+- `KUBE_CONFIG_DATA`
+- `EBRAIN_DEV_HOST`
+
+6. Run the first deploy manually:
+
+```bash
+EBRAIN_CONFIRM_APPLY=yes ./scripts/ebrain-dev-up.sh
+kubectl get pods -n ebrain-dev
+curl -fsS https://ebrain-dev.<your-company>.com/health
+kubectl exec -n ebrain-dev deploy/mcp-api -- \
+  gbrain apply-migrations --force-schema --yes
+```
+
+## A6 Notes
+
+- After PM performs the first real deploy, A6 should capture runtime evidence:
+  pod status, `/health` response, schema migration output, and at least one
+  concrete log line or DB row proving the deployed app is reading the intended
+  RDS/NAS-backed environment.
+- Do not broaden deployment targets until the dev vertical slice has real
+  runtime evidence.
