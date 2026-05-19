@@ -6,6 +6,13 @@ import type {
   TRUST_TIERS,
 } from './constants.ts';
 
+export type {
+  EnterpriseAppConfig,
+  EnterpriseConfig,
+  ExecutiveProfile,
+  PolicyDecision,
+} from '../core/types.ts';
+
 export type EnterpriseSourceType =
   | (typeof ENTERPRISE_SOURCE_TYPES)[number]
   | 'unknown';
@@ -13,24 +20,6 @@ export type EnterpriseSourceType =
 export type ClassificationLevel = (typeof CLASSIFICATION_LEVELS)[number];
 
 export type TrustTier = (typeof TRUST_TIERS)[number];
-
-export type PolicyDecision = {
-  decision: 'allow' | 'deny' | 'redact';
-  reason?: string;
-};
-
-export interface EnterpriseConfig {
-  enabled?: boolean;
-  apps?: Record<string, EnterpriseAppConfig>;
-}
-
-export interface EnterpriseAppConfig {
-  appType: Exclude<EnterpriseSourceType, 'unknown'>;
-  displayName?: string;
-  enabled?: boolean;
-  botEnabled?: boolean;
-  pushEnabled?: boolean;
-}
 
 export interface EnterprisePageMetadata {
   enterprise_source_type?: EnterpriseSourceType | null;
@@ -50,45 +39,6 @@ export interface EnterprisePageMetadata {
   retention_policy_id?: string | null;
   legal_hold_until?: string | Date | null;
   trust_tier?: TrustTier | null;
-}
-
-export interface ExecutiveProfile {
-  executiveId: string;
-  email: string;
-  displayName: string;
-  role: string;
-
-  soulPath: string;
-  agentPersonaPath: string;
-  userPath: string;
-  preferencesPath: string;
-  personalSkillsRoot: string;
-  subagentName: string;
-
-  timezone?: string;
-  locale?: string;
-  department?: string;
-  deputies?: string[];
-
-  feishuUserId?: string;
-  dingtalkUserId?: string;
-  wecomUserId?: string;
-
-  pushPreferences: {
-    morning_brief?: {
-      enabled: boolean;
-      time: string;
-      channel: 'feishu' | 'dingtalk' | 'wecom';
-    };
-    critical_signal?: {
-      enabled: boolean;
-      min_severity: number;
-      quiet_hours?: string;
-    };
-    conflict_alert?: {
-      enabled: boolean;
-    };
-  };
 }
 
 export interface EnterpriseRecipe extends Recipe {

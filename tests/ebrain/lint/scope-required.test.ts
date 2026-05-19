@@ -43,7 +43,7 @@ describe('Ebrain scope-required lint', () => {
     expect(captured.messages).toEqual([]);
   });
 
-  test('fails an operation file without scope', async () => {
+  test('fails an operation file without scope or localOnly', async () => {
     const opsDir = tempOpsDir();
     writeFileSync(
       join(opsDir, 'missing-scope.ts'),
@@ -59,15 +59,57 @@ describe('Ebrain scope-required lint', () => {
 
     expect(code).toBe(1);
     expect(captured.messages.join('\n')).toContain('missing-scope.ts');
+    expect(captured.messages.join('\n')).toContain('missing scope, localOnly');
   });
 
-  test('passes an operation file with scope', async () => {
+  test('fails an operation file with scope but without localOnly', async () => {
     const opsDir = tempOpsDir();
     writeFileSync(
-      join(opsDir, 'with-scope.ts'),
+      join(opsDir, 'missing-local-only.ts'),
       `export const listExecutives = {
         name: 'list_executives',
         scope: 'read',
+        handler: async () => ({})
+      };
+`,
+    );
+
+    const captured = stderrCapture();
+    const code = await main({ opsDir, stderr: captured.stderr });
+
+    expect(code).toBe(1);
+    expect(captured.messages.join('\n')).toContain('missing-local-only.ts');
+    expect(captured.messages.join('\n')).toContain('missing localOnly');
+  });
+
+  test('fails an operation file with localOnly but without scope', async () => {
+    const opsDir = tempOpsDir();
+    writeFileSync(
+      join(opsDir, 'missing-scope.ts'),
+      `export const listExecutives = {
+        name: 'list_executives',
+        localOnly: false,
+        handler: async () => ({})
+      };
+`,
+    );
+
+    const captured = stderrCapture();
+    const code = await main({ opsDir, stderr: captured.stderr });
+
+    expect(code).toBe(1);
+    expect(captured.messages.join('\n')).toContain('missing-scope.ts');
+    expect(captured.messages.join('\n')).toContain('missing scope');
+  });
+
+  test('passes an operation file with scope and localOnly', async () => {
+    const opsDir = tempOpsDir();
+    writeFileSync(
+      join(opsDir, 'with-required-fields.ts'),
+      `export const listExecutives = {
+        name: 'list_executives',
+        scope: 'read',
+        localOnly: false,
         handler: async () => ({})
       };
 `,

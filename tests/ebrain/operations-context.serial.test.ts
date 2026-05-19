@@ -152,6 +152,38 @@ describe('Ebrain OperationContext extensions', () => {
     expect(observedCtx?.executive).toBeUndefined();
   });
 
+  test('dispatchToolCall wraps loadExecutiveProfile errors as JSON ToolResult', async () => {
+    _setLoadExecutiveProfileForTest(async () => {
+      throw new Error('loader boom');
+    });
+    addOperation({
+      name: `${TEST_OP_PREFIX}loader_error`,
+      description: 'A4 loader error test op',
+      params: {},
+      handler: async () => ({ ok: true }),
+      mutating: false,
+    });
+
+    const result = await dispatchToolCall(
+      {} as BrainEngine,
+      `${TEST_OP_PREFIX}loader_error`,
+      {},
+      {
+        auth: {
+          token: 'token',
+          clientId: 'client',
+          scopes: ['read'],
+          executiveId: 'exec-err',
+        },
+      },
+    );
+
+    expect(result.isError).toBe(true);
+    expect(result.content[0]?.type).toBe('text');
+    const body = JSON.parse(result.content[0]?.text ?? '{}');
+    expect(body).toEqual({ error: 'internal_error', message: 'loader boom' });
+  });
+
   test('loadExecutiveProfile stub returns null in A4 MVP runtime', async () => {
     await expect(loadExecutiveProfile({} as BrainEngine, 'exec-1')).resolves.toBeNull();
   });

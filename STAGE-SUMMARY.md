@@ -395,7 +395,7 @@ src/mcp/dispatch.ts
 src/ebrain/executives/load-profile.ts
 src/ebrain/lint/scope-required.ts
 src/ebrain/types.ts
-tests/ebrain/operations-context.test.ts
+tests/ebrain/operations-context.serial.test.ts
 tests/ebrain/lint/scope-required.test.ts
 STAGE-SUMMARY.md
 ```
@@ -411,7 +411,7 @@ src/ebrain/lint/scope-required.ts        |  48 +++++++++-
 src/ebrain/types.ts                      |   5 +
 src/mcp/dispatch.ts                      |   5 +-
 tests/ebrain/lint/scope-required.test.ts |  82 ++++++++++++++++
-tests/ebrain/operations-context.test.ts  | 158 +++++++++++++++++++++++++++++++
+tests/ebrain/operations-context.serial.test.ts  | 158 +++++++++++++++++++++++++++++++
 7 files changed, 338 insertions(+), 7 deletions(-)
 ```
 
@@ -447,16 +447,19 @@ index 8501ec74..59e35da6 100644
 
  export interface ToolResult {
    content: { type: 'text'; text: string }[];
-@@ -247,7 +248,9 @@ export async function dispatchToolCall(
+@@ -247,8 +248,13 @@ export async function dispatchToolCall(
      };
    }
 
 -  const ctx = buildOperationContext(engine, safeParams, opts);
 +  const baseCtx = buildOperationContext(engine, safeParams, opts);
-+  const executive = baseCtx.auth?.executiveId ? await loadExecutiveProfile(engine, baseCtx.auth.executiveId) : null;
-+  const ctx = executive ? { ...baseCtx, executive } : baseCtx;
++  let ctx = baseCtx;
 
    try {
++    if (baseCtx.auth?.executiveId) {
++      const executive = await loadExecutiveProfile(engine, baseCtx.auth.executiveId);
++      if (executive) ctx = { ...baseCtx, executive };
++    }
      const result = await op.handler(ctx, safeParams);
 ```
 
@@ -477,10 +480,10 @@ index 8501ec74..59e35da6 100644
 ## Verification Evidence
 
 - `bun run typecheck`: passed.
-- `bun test tests/ebrain/operations-context.test.ts`: passed 5 tests.
-- `bun test tests/ebrain/lint/scope-required.test.ts`: passed 3 tests.
+- `bun test tests/ebrain/operations-context.serial.test.ts`: passed 6 tests.
+- `bun test tests/ebrain/lint/scope-required.test.ts`: passed 5 tests.
 - `bun run verify`: passed.
-- `bun test test/dispatch.test.ts test/operations*.test.ts`: passed 47 tests across 4 files.
+- `bun test test/operations*.test.ts`: passed 47 tests across 4 files.
 - `bun test test/mcp-dispatch-summarize.test.ts test/parity.test.ts test/cli.test.ts`: passed 34 tests across 3 files.
 
 ## Known Limits
@@ -492,3 +495,53 @@ index 8501ec74..59e35da6 100644
 
 - A5 can assume the core context shape is extended, but no Ebrain operation is registered yet.
 - E1 must replace the stub loader without moving the hook out of `dispatchToolCall`.
+
+## Fixwave (post-review)
+
+Reviewer report: `/Users/jackwu/Projects/EBRAIN_STAGE_A4_REVIEW.md`, verdict `FAIL`, fixed in a follow-up commit on top of `7cba5de2`.
+
+Fixes:
+
+- H-001: moved core-visible `ExecutiveProfile`, `PolicyDecision`, and `EnterpriseConfig` types to `src/core/types.ts`; `src/core/operations.ts` and `src/core/config.ts` now import only from `./types.ts`; `src/ebrain/types.ts` re-exports the shared types.
+- H-002: moved `loadExecutiveProfile()` await inside `dispatchToolCall`'s existing `try` block so loader failures return JSON-shaped `ToolResult` errors.
+- M-001: extended `src/ebrain/lint/scope-required.ts` to require both `scope:` and `localOnly:` for concrete Ebrain op files.
+- M-002: renamed `tests/ebrain/operations-context.test.ts` to `tests/ebrain/operations-context.serial.test.ts` because it mutates the shared `operations` registry and loader test seam.
+- L-001: removed the nonexistent dispatch-test command from verification evidence.
+
+Fixwave verification evidence:
+
+```text
+grep -nE "from '\\.\\./ebrain|from '\\.\\.\\./ebrain" src/core/
+# no output
+
+bun run typecheck
+# passed
+
+bun test tests/ebrain/operations-context.serial.test.ts
+# 6 pass / 0 fail
+
+bun test tests/ebrain/lint/scope-required.test.ts
+# 5 pass / 0 fail
+
+bun test tests/ebrain/
+# 28 pass / 0 fail
+
+bun test test/operations*.test.ts
+# 47 pass / 0 fail
+
+bun test test/mcp-dispatch-summarize.test.ts test/parity.test.ts test/cli.test.ts
+# 34 pass / 0 fail
+
+bun run verify
+# passed, including check-test-isolation: OK (472 non-serial unit files scanned)
+```
+
+Fixwave diff guard:
+
+```text
+git diff 7cba5de2 -- src/core/operations.ts
+# import path only: ../ebrain/types.ts -> ./types.ts
+
+git diff 7cba5de2 -- src/mcp/dispatch.ts
+# loader hook moved inside existing try/catch; op handler and error wrapper unchanged
+```

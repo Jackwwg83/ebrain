@@ -1070,3 +1070,60 @@ export interface EnterprisePageMetadata {
   legal_hold_until?: string | Date | null;
   trust_tier?: 'raw' | 'draft' | 'published' | 'verified' | 'inferred' | null;
 }
+
+export interface EnterpriseConfig {
+  enabled?: boolean;
+  apps?: Record<string, EnterpriseAppConfig>;
+}
+
+export interface EnterpriseAppConfig {
+  appType: EnterpriseSourceType;
+  displayName?: string;
+  enabled?: boolean;
+  botEnabled?: boolean;
+  pushEnabled?: boolean;
+}
+
+export type PolicyDecision = {
+  decision: 'allow' | 'deny' | 'redact';
+  reason?: string;
+};
+
+export interface ExecutiveProfile {
+  executiveId: string;
+  email: string;
+  displayName: string;
+  role: string;
+
+  soulPath: string;
+  agentPersonaPath: string;
+  userPath: string;
+  preferencesPath: string;
+  personalSkillsRoot: string;
+  subagentName: string;
+
+  timezone?: string;
+  locale?: string;
+  department?: string;
+  deputies?: string[];
+
+  feishuUserId?: string;
+  dingtalkUserId?: string;
+  wecomUserId?: string;
+
+  pushPreferences: {
+    morning_brief?: {
+      enabled: boolean;
+      time: string;
+      channel: 'feishu' | 'dingtalk' | 'wecom';
+    };
+    critical_signal?: {
+      enabled: boolean;
+      min_severity: number;
+      quiet_hours?: string;
+    };
+    conflict_alert?: {
+      enabled: boolean;
+    };
+  };
+}

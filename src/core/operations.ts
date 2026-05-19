@@ -9,7 +9,7 @@ import type { BrainEngine } from './engine.ts';
 import { clampSearchLimit } from './engine.ts';
 import type { GBrainConfig } from './config.ts';
 import type { PageType } from './types.ts';
-import type { ExecutiveProfile, PolicyDecision } from '../ebrain/types.ts';
+import type { ExecutiveProfile, PolicyDecision } from './types.ts';
 import { importFromContent } from './import-file.ts';
 import { hybridSearch, hybridSearchCached } from './search/hybrid.ts';
 import { expandQuery } from './search/expansion.ts';

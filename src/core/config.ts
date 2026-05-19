@@ -1,8 +1,7 @@
 import { readFileSync, writeFileSync, mkdirSync, chmodSync, existsSync } from 'fs';
 import { isAbsolute, join } from 'path';
 import { homedir } from 'os';
-import type { EngineConfig, EmbeddingColumnConfig } from './types.ts';
-import type { EnterpriseConfig } from '../ebrain/types.ts';
+import type { EngineConfig, EmbeddingColumnConfig, EnterpriseConfig } from './types.ts';
 
 /**
  * Where is the active DB URL coming from? Pure introspection, no connection

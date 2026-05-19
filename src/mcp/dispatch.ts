@@ -249,10 +249,13 @@ export async function dispatchToolCall(
   }
 
   const baseCtx = buildOperationContext(engine, safeParams, opts);
-  const executive = baseCtx.auth?.executiveId ? await loadExecutiveProfile(engine, baseCtx.auth.executiveId) : null;
-  const ctx = executive ? { ...baseCtx, executive } : baseCtx;
+  let ctx = baseCtx;
 
   try {
+    if (baseCtx.auth?.executiveId) {
+      const executive = await loadExecutiveProfile(engine, baseCtx.auth.executiveId);
+      if (executive) ctx = { ...baseCtx, executive };
+    }
     const result = await op.handler(ctx, safeParams);
     const out: ToolResult = { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
     // v0.31 (eD3 + eE4): best-effort _meta.brain_hot_memory injection.
