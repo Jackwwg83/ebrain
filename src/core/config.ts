@@ -2,6 +2,7 @@ import { readFileSync, writeFileSync, mkdirSync, chmodSync, existsSync } from 'f
 import { isAbsolute, join } from 'path';
 import { homedir } from 'os';
 import type { EngineConfig, EmbeddingColumnConfig } from './types.ts';
+import type { EnterpriseConfig } from '../ebrain/types.ts';
 
 /**
  * Where is the active DB URL coming from? Pure introspection, no connection
@@ -104,6 +105,12 @@ export interface GBrainConfig {
    * set time and on hybridSearch entry.
    */
   search_embedding_column?: string;
+
+  /**
+   * Optional Ebrain enterprise configuration block. Undefined keeps vanilla
+   * gbrain behavior; loadConfig() does not validate or enforce it at MVP time.
+   */
+  enterprise?: EnterpriseConfig;
 
   /**
    * Thin-client mode (multi-topology v1). When set, this install does NOT

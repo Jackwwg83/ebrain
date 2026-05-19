@@ -1046,3 +1046,27 @@ export class GBrainError extends Error {
     this.name = 'GBrainError';
   }
 }
+
+// Ebrain metadata extension types. These are optional structural helpers only;
+// the existing Page interface stays unchanged for vanilla gbrain callers.
+export type EnterpriseSourceType = string;
+
+export interface EnterprisePageMetadata {
+  enterprise_source_type?: EnterpriseSourceType | null;
+  enterprise_source_ref?: string | null;
+  owner_org_unit?: string | null;
+  classification?: 'L0' | 'L1' | 'L2' | 'L3' | null;
+  confidence?: number | null;
+  provenance?: Record<string, unknown> | null;
+  object_hash?: string | null;
+  last_ingested_at?: string | Date | null;
+
+  org_id?: string | null;
+  bu_id?: string | null;
+  workspace_id?: string | null;
+  author_entity_id?: string | null;
+  reviewer_entity_id?: string | null;
+  retention_policy_id?: string | null;
+  legal_hold_until?: string | Date | null;
+  trust_tier?: 'raw' | 'draft' | 'published' | 'verified' | 'inferred' | null;
+}

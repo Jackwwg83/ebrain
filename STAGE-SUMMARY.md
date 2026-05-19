@@ -312,3 +312,65 @@ STAGE-SUMMARY.md
 - A3 should continue to use `content_chunks.model` for embedding provider separation and must not add `embedding_model_id`.
 - OAuth executive ownership remains an application-layer rule; schema columns are intentionally nullable for MVP compatibility.
 - Before any Postgres deployment path, run `test/e2e/schema-drift.test.ts` with a real `DATABASE_URL`.
+
+---
+
+# Stage A3: Types + Constants + Crypto Helpers
+
+## Scope
+
+- Expanded Ebrain constants and type skeletons.
+- Added AES-256-GCM application-layer encryption/decryption helpers.
+- Added fail-fast master-key loading from `EBRAIN_SECRETS_KEY`.
+- Added optional Ebrain config typing to `GBrainConfig`.
+- Added optional enterprise page metadata helper types without changing the existing `Page` interface.
+
+## Files Changed
+
+```text
+src/ebrain/constants.ts
+src/ebrain/types.ts
+src/ebrain/secrets/crypto.ts
+src/ebrain/secrets/master-key.ts
+src/core/types.ts
+src/core/config.ts
+tests/ebrain/secrets/crypto.test.ts
+tests/ebrain/secrets/master-key.test.ts
+STAGE-SUMMARY.md
+```
+
+## New Dependencies
+
+- Root package dependencies: none.
+- Root lockfile changes: none.
+- `bun add` / `npm install` new dependency actions: none.
+- Crypto uses Bun's Node-compatible built-in `node:crypto` module.
+
+## ADR / Invariant Notes
+
+- ADR violations: none.
+- I-01: `EBRAIN_SOURCE_ID = 'enterprise'` remains isolated in `src/ebrain/constants.ts`; the only other grep hit is the existing v200 SQL view filter in `src/core/migrate.ts`.
+- I-02: no `src/core/operations.ts` change in A3; OperationContext/AuthInfo extension remains scheduled for A4.
+- I-08: OAuth executive ownership remains application-layer only; A3 adds types and does not enforce schema or config loading.
+- Secrets boundary: decrypt/encrypt helpers are only under `src/ebrain/secrets/`.
+
+## Verification Evidence
+
+- `bun run typecheck`: passed.
+- `bun test tests/ebrain/secrets/crypto.test.ts`: passed 7 tests.
+- `bun test tests/ebrain/secrets/master-key.test.ts`: passed 5 tests.
+- `bun test tests/ebrain/secrets/`: passed 12 tests across 2 files.
+- `bun run verify`: passed.
+- `bun test test/config.test.ts test/types.test.ts`: exited 0; `test/config.test.ts` passed 20 tests. This repository has no `test/types.test.ts`, so Bun ran the existing config suite only.
+- I-01 check: `grep -rn "'enterprise'" src/ebrain/ src/core/` returned `src/ebrain/constants.ts` and the expected v200 SQL string in `src/core/migrate.ts`.
+
+## Known Limits
+
+- `EnterpriseConfig` is intentionally narrow because the design docs name the interface but do not define a full config schema.
+- A3 does not wire dispatch, operations, OAuth provider, or runtime app loading; those remain later stages.
+
+## A4 Notes
+
+- A4 should add optional AuthInfo and OperationContext fields without changing existing required gbrain fields.
+- A4 should keep `buildOperationContext` synchronous and load Ebrain context in the async `dispatchToolCall` path.
+- A4 should continue to use `EBRAIN_SOURCE_ID` instead of adding new source-id literals.
