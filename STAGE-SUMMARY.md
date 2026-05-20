@@ -1615,3 +1615,59 @@ STAGE-SUMMARY.md
 - No live DingTalk/Feishu/WeCom/Tencent Meeting callback traffic was exercised in this D2 local run; validation used local synthetic webhook fixtures and unit/integration tests.
 - The realistic end-to-end path proven locally is: decoded IM event -> executive lookup -> protected subagent job data -> real subagent handler -> brain tool context with enterprise source/auth. `test/subagent-handler.test.ts` confirms a real subagent handler tool call sees enterprise source content and does not surface default-source content.
 - M-D3 remains the first live webhook runtime gate after PM configures the dev callback URL and credentials; do not claim production traffic completion from D2 alone.
+
+# Stage F1: Fact Conflict Detection
+
+## Status
+
+- Stage: F1
+- Branch: `ebrain-mvp`
+- Baseline: `0025ce21ce24140b8225d5b9d6cda2f6783998f5`
+- Scope: enterprise fact conflict detection on gbrain `facts` via `enterprise_fact_claims_view`, canonical conflict hash, winner helper, and thin enterprise extract-facts wrapper
+- Result: PASS locally. The detector reads the v200 `enterprise_fact_claims_view`, groups by `entity_slug + claim_metric`, writes open rows to `enterprise_fact_conflicts` with `ON CONFLICT (entity_slug, fact_key, conflict_hash) DO NOTHING`, and does not resolve conflicts automatically.
+
+## Implementation
+
+- `src/ebrain/conflicts/detect.ts`: implemented `detectFactConflicts(ctx)` against `enterprise_fact_claims_view`, including `competing_values`, evidence slugs, stable conflict hash, and insert-vs-skip accounting.
+- `src/ebrain/conflicts/conflict-hash.ts`: implemented sha256 canonicalization with source/value fingerprints sorted for order-independent hashes.
+- `src/ebrain/conflicts/choose-winner.ts`: implemented `factAuthority` source-priority winner selection, confidence fallback, and null-on-tie behavior for ops manual resolution.
+- `src/ebrain/cycle/extract-facts-enterprise.ts`: implemented a thin wrapper around gbrain `runExtractFacts`, defaulting to `sourceId='enterprise'`, threading page/slugs, and returning enterprise context fields from the view rather than parsing fences itself.
+- Tests added: `tests/ebrain/conflicts/detect.test.ts`, `tests/ebrain/conflicts/conflict-hash.test.ts`, `tests/ebrain/conflicts/choose-winner.test.ts`, `tests/ebrain/conflicts/round-trip.test.ts`, and `tests/ebrain/cycle/extract-facts-enterprise.test.ts`.
+
+## Evidence
+
+| Check | Result | Evidence |
+|---|---|---|
+| Start state | PASS | `git rev-parse --abbrev-ref HEAD` -> `ebrain-mvp`; `git rev-parse HEAD` -> `0025ce21ce24140b8225d5b9d6cda2f6783998f5`; initial `git status --short` was empty |
+| Real exports verified | PASS | `grep -nE "^export (async )?(function|const)" src/core/facts-fence.ts` confirmed `FACTS_FENCE_BEGIN`, `FACTS_FENCE_END`, `parseFactsFence`, `renderFactsTable`, `upsertFactRow`, and `stripFactsFence`; `src/core/cycle/extract-facts.ts` exports `runExtractFacts`, not `extractFacts` |
+| v200 view verified | PASS | `src/core/migrate.ts` defines `enterprise_fact_claims_view` from `facts` joined to `pages`, including `claim_metric`, `claim_value`, `confidence`, `enterprise_source_type`, and `observed_at` |
+| F1 targeted tests | PASS | `bun test tests/ebrain/conflicts/ tests/ebrain/cycle/` -> 12 pass, 0 fail, 30 expect() calls |
+| Runtime artifact inspection | PASS | `detect.test.ts` seeds PGLite `facts` rows for `acme/arr` from `salesforce=120` and `erp=124`; `detectFactConflicts` inserts 1 real `enterprise_fact_conflicts` row, inspects `competing_values`, `status='open'`, null winner fields, evidence slugs, then a second run returns `conflictsInserted: 0` |
+| Typecheck | PASS | `bun run typecheck` -> `tsc --noEmit` exited 0 |
+| Full verify | PASS | `bun run verify` -> privacy, proposal PII, test names, JSONB, source-id projection, progress, isolation, WASM, admin build, admin scope, CLI executable, system-of-record, eval glossary, synthetic corpus privacy, and typecheck all passed |
+| Existing facts regressions | PASS | `bun test test/facts-fence.test.ts test/facts-fence-typed.test.ts test/extract-facts-phase.test.ts test/facts-extract.test.ts test/facts-extract-smoke.test.ts test/facts-extract-silent-no-op.test.ts` -> 84 pass, 0 fail, 237 expect() calls |
+| Private parser absent | PASS | `find src/ebrain -name "fence-parser*"` returned no files |
+| Canonical fence helpers | PASS | `grep -nE "renderFactsTable|FACTS_FENCE_BEGIN|FACTS_FENCE_END|parseFactsFence" src/ebrain/conflicts/* src/ebrain/cycle/*` returned 6 matches in `extract-facts-enterprise.ts`; no marker strings were hand-built |
+| Core contract unchanged | PASS | `git diff 0025ce21..HEAD -- 'src/core/' 'src/mcp/' 'src/commands/'` returned empty |
+
+## Files Changed
+
+```text
+src/ebrain/conflicts/choose-winner.ts
+src/ebrain/conflicts/conflict-hash.ts
+src/ebrain/conflicts/detect.ts
+src/ebrain/conflicts/index.ts
+src/ebrain/cycle/extract-facts-enterprise.ts
+tests/ebrain/conflicts/choose-winner.test.ts
+tests/ebrain/conflicts/conflict-hash.test.ts
+tests/ebrain/conflicts/detect.test.ts
+tests/ebrain/conflicts/round-trip.test.ts
+tests/ebrain/cycle/extract-facts-enterprise.test.ts
+STAGE-SUMMARY.md
+```
+
+## Runtime Notes
+
+- No private Ebrain fence parser was created. Round-trip tests call gbrain `renderFactsTable` directly and assert the begin/end markers occur exactly once, preserving the R5-M-001 no-double-wrap guard.
+- `detectFactConflicts` does not call `chooseWinningClaim` and does not set `winning_value` / `winning_source`; conflict resolution remains an ops/manual workflow.
+- The requested `test/extract-facts.test.ts` file is not present in this repo snapshot; the actual gbrain facts extraction regression files present under `test/` were run instead and passed.
