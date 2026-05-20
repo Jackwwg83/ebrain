@@ -77,12 +77,15 @@ certManager:
   email: ops@example.com
   server: https://acme-v02.api.letsencrypt.org/directory
   alidns:
+    secretStoreName: alicloud-kms-cert-manager
     groupName: acme.alidns.com
     solverName: alidns
     region: cn-shanghai
     accessSecretName: alicloud-dns01-access
     accessKeyIdKey: access-key-id
     accessKeySecretKey: access-key-secret
+    accessKeyIdRemoteKey: ebrain/dev/dns01/access-key-id
+    accessKeySecretRemoteKey: ebrain/dev/dns01/access-key-secret
 
 networkPolicy:
   enabled: true
@@ -90,8 +93,8 @@ networkPolicy:
     cidr: 10.0.0.0/16
     port: 5432
   httpsEgressCidrs:
-    # Replace TEST-NET ranges with company-approved egress IP ranges.
-    # ACK CNI FQDN policies can be used for SaaS provider domains.
-    - 203.0.113.0/24
-    - 198.51.100.0/24
-    - 192.0.2.0/24
+    # Must be set to company-approved SaaS egress IP ranges before deploy.
+    # Example only, do not commit as a live value:
+    # - 203.0.113.0/24
+    []
+  ingressNamespace: ingress-nginx

@@ -10,6 +10,7 @@ IMAGE_TAG="${IMAGE_TAG:-$(git rev-parse --short=12 HEAD)}"
 ACR_REGISTRY="${ACR_REGISTRY:?Set ACR_REGISTRY, for example registry.cn-shanghai.aliyuncs.com}"
 ACR_REPOSITORY="${ACR_REPOSITORY:-your-acr-namespace/ebrain}"
 IMAGE_REPOSITORY="${ACR_REGISTRY}/${ACR_REPOSITORY}"
+HTTPS_EGRESS_CIDRS="${HTTPS_EGRESS_CIDRS:-}"
 
 need() {
   if ! command -v "$1" >/dev/null 2>&1; then
@@ -26,6 +27,19 @@ if [ -n "${ACR_USER:-}" ] && [ -n "${ACR_PASS:-}" ]; then
   echo "$ACR_PASS" | docker login "$ACR_REGISTRY" --username "$ACR_USER" --password-stdin
 fi
 
+if [ -z "$HTTPS_EGRESS_CIDRS" ]; then
+  echo "[ebrain-dev-deploy] ERROR: set HTTPS_EGRESS_CIDRS before deploy." >&2
+  echo "  Example: HTTPS_EGRESS_CIDRS=203.0.113.0/24,198.51.100.0/24" >&2
+  exit 1
+fi
+
+IFS=',' read -r -a egress_cidrs <<< "$HTTPS_EGRESS_CIDRS"
+egress_set_args=()
+for index in "${!egress_cidrs[@]}"; do
+  cidr="${egress_cidrs[$index]}"
+  egress_set_args+=(--set "networkPolicy.httpsEgressCidrs[$index]=${cidr}")
+done
+
 echo "[ebrain-dev-deploy] Building ${IMAGE_REPOSITORY}:${IMAGE_TAG}..."
 docker build -f deploy/dev/Dockerfile -t "${IMAGE_REPOSITORY}:${IMAGE_TAG}" .
 
@@ -38,6 +52,7 @@ helm upgrade --install "$RELEASE" deploy/dev/helm \
   --values "$VALUES_FILE" \
   --set "image.repository=${IMAGE_REPOSITORY}" \
   --set "image.tag=${IMAGE_TAG}" \
+  "${egress_set_args[@]}" \
   --wait \
   --atomic
 

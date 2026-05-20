@@ -186,29 +186,41 @@ helm install cert-manager jetstack/cert-manager \
 
 helm repo add external-secrets https://charts.external-secrets.io
 helm install external-secrets external-secrets/external-secrets \
-  --namespace external-secrets --create-namespace
+  --namespace external-secrets --create-namespace \
+  --version 2.4.1 \
+  --set installCRDs=true
+
+# Alibaba provider is deprecated in current ESO docs. Keep this version pinned
+# for A5 dev, and plan the RRSA / alicloud-kms-go migration before staging.
 
 # 4. 安装 AliDNS DNS-01 solver（示例，版本由 PM 按公司镜像源固定）
 helm repo add cert-manager-alidns https://devmachine-fr.github.io/cert-manager-alidns-webhook
 helm install cert-manager-alidns cert-manager-alidns/cert-manager-alidns-webhook \
   --namespace cert-manager
 
-# 5. 创建 External Secrets / cert-manager 所需 provider secret
+# 5. 创建 External Secrets 所需 KMS provider bootstrap secret
 kubectl create secret generic alicloud-kms-access -n ebrain-dev \
   --from-literal=access-key-id=<RAM_ACCESS_KEY_ID> \
   --from-literal=access-key-secret=<RAM_ACCESS_KEY_SECRET>
-kubectl create secret generic alicloud-dns01-access -n cert-manager \
+kubectl create secret generic alicloud-kms-access -n cert-manager \
   --from-literal=access-key-id=<RAM_ACCESS_KEY_ID> \
   --from-literal=access-key-secret=<RAM_ACCESS_KEY_SECRET>
 
+# DNS-01 access key itself is not created with kubectl. Helm renders
+# alicloud-dns01-externalsecret.yaml, which syncs it from KMS keys:
+#   ebrain/dev/dns01/access-key-id
+#   ebrain/dev/dns01/access-key-secret
+
 # 6. 安装 Ebrain（推荐：脚本封装 terraform + helm）
-EBRAIN_CONFIRM_APPLY=yes ./scripts/ebrain-dev-up.sh
+HTTPS_EGRESS_CIDRS=203.0.113.0/24 EBRAIN_CONFIRM_APPLY=yes \
+  ./scripts/ebrain-dev-up.sh
 
 # 或只执行 Helm deploy（资源已创建时）
 helm upgrade --install ebrain-dev deploy/dev/helm \
   --values deploy/dev/helm/values.dev.yaml \
   --namespace ebrain-dev \
   --create-namespace \
+  --set 'networkPolicy.httpsEgressCidrs[0]=203.0.113.0/24' \
   --wait \
   --atomic
 
@@ -249,6 +261,13 @@ curl https://ebrain-dev.<your-company>.com/health
 | `ebrain/dev/providers/anthropic-api-key` | `ANTHROPIC_API_KEY` |
 | `ebrain/dev/providers/dashscope-api-key` | `DASHSCOPE_API_KEY` |
 | `ebrain/dev/acr/dockerconfigjson` | `.dockerconfigjson` image pull secret |
+| `ebrain/dev/dns01/access-key-id` | `alicloud-dns01-access.access-key-id` in `cert-manager` |
+| `ebrain/dev/dns01/access-key-secret` | `alicloud-dns01-access.access-key-secret` in `cert-manager` |
+
+> DNS-01 RAM AccessKey 只授予 `alidns:DescribeDomainRecords`、
+> `alidns:AddDomainRecord`、`alidns:UpdateDomainRecord`，不授予 admin。
+> `networkPolicy.httpsEgressCidrs` 默认为空；部署前必须填公司批准的
+> DingTalk / model provider 出站 CIDR，空值会让 Helm template fail-fast。
 
 ### 2.4 配置钉钉 webhook 回调
 

@@ -726,8 +726,13 @@ helm upgrade --install cert-manager jetstack/cert-manager \
   --set installCRDs=true
 helm upgrade --install external-secrets external-secrets/external-secrets \
   --namespace external-secrets \
-  --create-namespace
+  --create-namespace \
+  --version 2.4.1 \
+  --set installCRDs=true
 ```
+
+Alibaba provider is deprecated in current ESO docs. Stage A5 keeps it pinned for
+dev, and PM must plan an RRSA / alicloud-kms-go migration before staging.
 
 3. Create the Kubernetes provider secrets referenced by Helm:
 
@@ -737,11 +742,15 @@ kubectl create secret generic alicloud-kms-access \
   -n ebrain-dev \
   --from-literal=access-key-id='<redacted>' \
   --from-literal=access-key-secret='<redacted>'
-kubectl create secret generic alicloud-dns01-access \
+kubectl create secret generic alicloud-kms-access \
   -n cert-manager \
   --from-literal=access-key-id='<redacted>' \
   --from-literal=access-key-secret='<redacted>'
 ```
+
+DNS-01 RAM credentials are synced by ESO from KMS into
+`cert-manager/alicloud-dns01-access`; do not create them with
+`kubectl --from-literal`.
 
 4. Write KMS remote values:
 
@@ -752,6 +761,8 @@ kubectl create secret generic alicloud-dns01-access \
 - `ebrain/dev/providers/anthropic-api-key`
 - `ebrain/dev/providers/dashscope-api-key`
 - `ebrain/dev/acr/dockerconfigjson`
+- `ebrain/dev/dns01/access-key-id`
+- `ebrain/dev/dns01/access-key-secret`
 
 5. Configure GitHub Actions repository secrets:
 
@@ -761,11 +772,26 @@ kubectl create secret generic alicloud-dns01-access \
 - `ACR_PASS`
 - `KUBE_CONFIG_DATA`
 - `EBRAIN_DEV_HOST`
+- repository variable `EBRAIN_HTTPS_EGRESS_CIDRS` as a comma-separated list of
+  company-approved SaaS egress CIDRs
 
-6. Run the first deploy manually:
+6. Complete deployment gates before running Helm:
+
+- RAM Policy Gate: AccessKeys have only product-scoped KMS read/decrypt, DNS
+  record management (`alidns:DescribeDomainRecords`,
+  `alidns:AddDomainRecord`, `alidns:UpdateDomainRecord`), ACK read/deploy,
+  VPC/RDS/NAS/SLB resource creation, and ACR push/pull permissions needed for
+  dev. No account admin key is used.
+- DNS Gate: `ebrain-dev.<your-company>.com` resolves by A or CNAME to the SLB
+  public address. Verify with `dig ebrain-dev.<your-company>.com`.
+- KMS Rotation Gate: Ebrain KMS key has 90-day rotation enabled; after ESO
+  sync, check the target K8s Secret resource version changed.
+
+7. Run the first deploy manually:
 
 ```bash
-EBRAIN_CONFIRM_APPLY=yes ./scripts/ebrain-dev-up.sh
+HTTPS_EGRESS_CIDRS=203.0.113.0/24 EBRAIN_CONFIRM_APPLY=yes \
+  ./scripts/ebrain-dev-up.sh
 kubectl get pods -n ebrain-dev
 curl -fsS https://ebrain-dev.<your-company>.com/health
 kubectl exec -n ebrain-dev deploy/mcp-api -- \
@@ -780,3 +806,82 @@ kubectl exec -n ebrain-dev deploy/mcp-api -- \
   RDS/NAS-backed environment.
 - Do not broaden deployment targets until the dev vertical slice has real
   runtime evidence.
+
+## Fixwave (post A5 review)
+
+Reviewer report: `/Users/jackwu/Projects/EBRAIN_STAGE_A5_REVIEW.md`, verdict
+`FAIL`, fixed in a follow-up commit on top of `5b216a88`.
+
+Fixes:
+
+- R-A5-H-001: switched SecretStore/ExternalSecret manifests to
+  `external-secrets.io/v1`; pinned ESO install to `--version 2.4.1`; documented
+  Alibaba provider deprecation and RRSA / SDK migration gate.
+- R-A5-H-002: added root `.dockerignore` to exclude `.git`, env files,
+  Terraform state/tfvars, kubeconfigs, node modules, build outputs, and temp
+  artifacts from Docker build context.
+- R-A5-H-003: appended Terraform sensitive-file rules to `.gitignore`.
+- R-A5-H-004: `scripts/ebrain-dev-up.sh` now requires `TF_VARS_FILE`
+  (`dev.tfvars` by default), runs `terraform plan`, and applies with
+  `-var-file`.
+- R-A5-H-005: added `alicloud-dns01-externalsecret.yaml` so DNS-01 RAM
+  credentials sync from KMS into `cert-manager/alicloud-dns01-access`.
+- R-A5-M-001: `networkPolicy.httpsEgressCidrs` now defaults to empty and Helm
+  fails fast until PM provides company-approved CIDRs; scripts and Actions
+  accept `HTTPS_EGRESS_CIDRS` / `EBRAIN_HTTPS_EGRESS_CIDRS`.
+- R-A5-M-002: NetworkPolicy ingress now only allows the configured ingress
+  controller namespace (`ingress-nginx` by default).
+- R-A5-M-003: dev deploy workflow now uses a branch-scoped concurrency lock.
+- R-A5-L-001: PM Action Items now include RAM Policy, DNS, and KMS Rotation
+  gates.
+
+Fixwave verification:
+
+```text
+helm template ebrain-dev deploy/dev/helm --values deploy/dev/helm/values.dev.yaml
+# failed as expected: networkPolicy.httpsEgressCidrs is empty
+
+helm template ebrain-dev deploy/dev/helm \
+  --values deploy/dev/helm/values.dev.yaml \
+  --set networkPolicy.httpsEgressCidrs[0]=203.0.113.0/24
+# rendered successfully
+
+grep -R "external-secrets.io/v1beta1" deploy/dev/helm/templates
+# no output
+
+grep -E "tfvars|tfstate|\\.terraform" .gitignore
+# terraform sensitive-file rules present
+
+grep "TF_VARS_FILE" scripts/ebrain-dev-up.sh
+# present
+
+grep "concurrency:" .github/workflows/dev-deploy.yml
+# present
+
+helm show chart external-secrets/external-secrets --version 2.4.1
+# chart version 2.4.1 exists; appVersion v2.4.1
+
+helm lint deploy/dev/helm
+# 1 chart(s) linted, 0 chart(s) failed; fail-fast warning emitted
+
+helm lint deploy/dev/helm --values deploy/dev/helm/values.dev.yaml \
+  --set 'networkPolicy.httpsEgressCidrs[0]=203.0.113.0/24'
+# 1 chart(s) linted, 0 chart(s) failed
+
+yamllint /tmp/a5-fix-rendered.yaml deploy/dev/helm/values.dev.yaml \
+  deploy/dev/helm/values.yaml .github/workflows/ci.yml \
+  .github/workflows/dev-deploy.yml
+# exit 0
+
+actionlint .github/workflows/*.yml
+# exit 0
+
+shellcheck scripts/ebrain-dev-*.sh
+# exit 0
+
+bun run typecheck
+# exit 0
+
+bun test tests/ebrain/
+# 28 pass / 0 fail
+```

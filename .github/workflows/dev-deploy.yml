@@ -9,12 +9,17 @@ name: Ebrain Dev Deploy
 permissions:
   contents: read
 
+concurrency:
+  group: ebrain-dev-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   RELEASE_NAME: ebrain-dev
   NAMESPACE: ebrain-dev
   VALUES_FILE: deploy/dev/helm/values.dev.yaml
   ACR_REGISTRY: ${{ secrets.ACR_REGISTRY }}
   ACR_REPOSITORY: ${{ secrets.ACR_REPOSITORY }}
+  HTTPS_EGRESS_CIDRS: ${{ vars.EBRAIN_HTTPS_EGRESS_CIDRS }}
 
 jobs:
   build:
@@ -53,6 +58,16 @@ jobs:
           chmod 600 "${HOME}/.kube/config"
       - name: Deploy with Helm
         run: |
+          if [ -z "${HTTPS_EGRESS_CIDRS}" ]; then
+            echo "Set repository variable EBRAIN_HTTPS_EGRESS_CIDRS." >&2
+            exit 1
+          fi
+          IFS=',' read -r -a egress_cidrs <<< "${HTTPS_EGRESS_CIDRS}"
+          set_args=()
+          for index in "${!egress_cidrs[@]}"; do
+            cidr="${egress_cidrs[$index]}"
+            set_args+=(--set "networkPolicy.httpsEgressCidrs[$index]=${cidr}")
+          done
           helm upgrade --install "${RELEASE_NAME}" deploy/dev/helm \
             --namespace "${NAMESPACE}" \
             --create-namespace \
@@ -60,6 +75,7 @@ jobs:
             --set \
               "image.repository=${ACR_REGISTRY}/${ACR_REPOSITORY}" \
             --set "image.tag=${GITHUB_SHA}" \
+            "${set_args[@]}" \
             --wait \
             --atomic
       - name: Roll back on failure

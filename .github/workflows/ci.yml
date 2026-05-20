@@ -37,11 +37,21 @@ jobs:
       - name: Install Helm
         run: sudo snap install helm --classic
       - name: Helm lint
-        run: helm lint deploy/dev/helm
+        run: |
+          helm lint deploy/dev/helm \
+            --set 'networkPolicy.httpsEgressCidrs[0]=203.0.113.0/24'
+      - name: Helm fail-fast without SaaS egress CIDRs
+        run: |
+          if helm template ebrain-dev deploy/dev/helm \
+            --values deploy/dev/helm/values.dev.yaml; then
+            echo "helm template unexpectedly passed without HTTPS egress CIDRs"
+            exit 1
+          fi
       - name: Helm template
         run: |
           helm template ebrain-dev deploy/dev/helm \
             --values deploy/dev/helm/values.dev.yaml \
+            --set 'networkPolicy.httpsEgressCidrs[0]=203.0.113.0/24' \
             > /tmp/ebrain-dev-rendered.yaml
       - name: Parse rendered Kubernetes YAML
         run: |
@@ -73,6 +83,7 @@ jobs:
         run: |
           helm template ebrain-dev deploy/dev/helm \
             --values deploy/dev/helm/values.dev.yaml \
+            --set 'networkPolicy.httpsEgressCidrs[0]=203.0.113.0/24' \
             > /tmp/ebrain-dev-rendered.yaml
       - name: Validate YAML syntax
         run: |

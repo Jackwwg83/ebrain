@@ -1,0 +1,55 @@
+# Git
+.git
+.gitignore
+
+# Env files
+.env
+.env.*
+!.env.*.example
+
+# Terraform
+deploy/dev/terraform/*.tfvars
+!deploy/dev/terraform/*.tfvars.example
+deploy/dev/terraform/.terraform/
+deploy/dev/terraform/*.tfstate
+deploy/dev/terraform/*.tfstate.*
+deploy/dev/terraform/.terraform.lock.hcl
+
+# Kubeconfig and temporary credentials
+.kube/
+**/.kube/
+kubeconfig
+*.kubeconfig
+
+# Node and Bun
+node_modules
+**/node_modules
+bun.lockb
+*.log
+
+# Build artifacts
+bin/
+dist/
+build/
+
+# IDE
+.vscode
+.idea
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# gbrain runtime
+~/.gbrain/
+.gbrain/
+
+# Tests and temp
+/tmp/
+coverage/
+*.test.local
+
+# Stage outputs
+STAGE-SUMMARY.md.bak
+admin-ebrain-storybook/node_modules

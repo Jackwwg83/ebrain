@@ -41,3 +41,18 @@ test/fixtures/pglite-snapshot.version
 
 # Private brain reports — never check these in (per CLAUDE.md privacy rule)
 reports/network-intelligence/
+
+# Terraform (Stage A5 R-A5-H-003)
+deploy/dev/terraform/*.tfvars
+!deploy/dev/terraform/*.tfvars.example
+deploy/dev/terraform/.terraform/
+deploy/dev/terraform/.terraform.lock.hcl
+deploy/dev/terraform/*.tfstate
+deploy/dev/terraform/*.tfstate.*
+deploy/dev/terraform/*.tfstate.backup
+deploy/dev/terraform/crash.log
+deploy/dev/terraform/crash.*.log
+deploy/dev/terraform/override.tf
+deploy/dev/terraform/override.tf.json
+deploy/dev/terraform/*_override.tf
+deploy/dev/terraform/*_override.tf.json
