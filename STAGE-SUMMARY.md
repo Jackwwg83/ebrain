@@ -991,3 +991,93 @@ grep -n 'cidr: 0.0.0.0/0' /tmp/a5-r4-zero.yaml
 grep -n 'cidr: 10.0.0.1/32' /tmp/a5-r4-32.yaml
 # 47:            cidr: 10.0.0.1/32
 ```
+
+---
+
+# Stage B1: EnterpriseApp Base Abstraction
+
+## Scope
+
+- Replaced A1 placeholders in `src/ebrain/apps/base/` with the shared B1 EnterpriseApp abstraction.
+- Added strict vendor-neutral interfaces only: `EnterpriseApp`, `TokenManager`, `WebhookHandler`, `TieredRateLimiter`, `BotAdapter`, `EnterpriseConnector`, and `EnterpriseIngestObject` support types.
+- Added a barrel export from `src/ebrain/apps/base/index.ts` for reviewer and future connector consumption.
+- Added dummy implementation tests under `tests/ebrain/apps/base/types.test.ts` to prove each interface can be satisfied without any concrete Feishu/DingTalk/WeCom/Tencent Meeting/CRM implementation.
+
+## Files Changed
+
+```text
+src/ebrain/apps/base/bot-adapter.ts
+src/ebrain/apps/base/enterprise-app.ts
+src/ebrain/apps/base/enterprise-connector.ts
+src/ebrain/apps/base/index.ts
+src/ebrain/apps/base/tiered-rate-limiter.ts
+src/ebrain/apps/base/token-manager.ts
+src/ebrain/apps/base/types.ts
+src/ebrain/apps/base/webhook-handler.ts
+tests/ebrain/apps/base/types.test.ts
+STAGE-SUMMARY.md
+```
+
+No `src/core/`, `src/mcp/`, `src/ebrain/types.ts`, or `src/ebrain/executives/` files were edited in B1.
+
+## Implementation Notes
+
+- `EnterpriseApp.appType` is a strict literal union: `feishu | dingtalk | wecom | tencent-meeting | crm-shenxiao | crm-fenxiang`; no `string` fallback.
+- `webhookHandler?` and `botAdapter?` remain optional so Tencent Meeting and CRM adapters can satisfy the base contract without fake capabilities.
+- `EnterpriseConnector.app` is non-optional and typed as `EnterpriseApp`, preserving the dependency-injection guard for C-stage concrete connectors.
+- `TokenKind` matches the v200 `enterprise_oauth_tokens.token_kind` CHECK values: `tenant_access | user_access | app_access | refresh`.
+- `TieredRateLimiter` documents the internal `${tier}:${key}` storage rule and exposes separate `app | tenant | user` tiers to avoid cross-tier key collisions.
+- `IncomingRequest` stays framework-neutral with only `headers` and `rawBody`; no Express or vendor SDK types were imported.
+- `EnterpriseIngestObject.classification?: 'L0' | 'L1' | 'L2' | 'L3'` is present for I-04.
+- B1 intentionally has no data-producing runtime path; the stage is interface/type-only by design. Runtime validation is compile-time strictness plus dummy implementation execution, not a fake ingest workflow.
+
+## Diff Stat
+
+```text
+src/ebrain/apps/base/bot-adapter.ts          |  27 ++-
+src/ebrain/apps/base/enterprise-app.ts       |  41 +++-
+src/ebrain/apps/base/enterprise-connector.ts |  20 ++
+src/ebrain/apps/base/index.ts                |  10 +-
+src/ebrain/apps/base/tiered-rate-limiter.ts  |  26 ++-
+src/ebrain/apps/base/token-manager.ts        |  30 ++-
+src/ebrain/apps/base/types.ts                |  62 ++++++
+src/ebrain/apps/base/webhook-handler.ts      |  20 +-
+tests/ebrain/apps/base/types.test.ts         | 321 +++++++++++++++++++++++++++
+9 files changed, 539 insertions(+), 18 deletions(-)
+```
+
+`STAGE-SUMMARY.md` was updated after this diff-stat capture.
+
+## Verification Evidence
+
+| Check | Result | Evidence |
+|---|---|---|
+| `git status --short --branch` before work | PASS | `## ebrain-mvp...origin/ebrain-mvp`; HEAD `aefe469d577c95693559f3ecbd82b3dd70be9410` |
+| `bun run typecheck` | PASS | `tsc --noEmit` exited 0 |
+| `bun test tests/ebrain/apps/base/` | PASS | 12 pass, 0 fail, 22 assertions |
+| Explicit type sentinel check for B1 test file | PASS | `./node_modules/.bin/tsc --noEmit --target ESNext --module ESNext --moduleResolution bundler --types bun-types --strict --skipLibCheck --esModuleInterop --allowImportingTsExtensions src/types/image-decoders.d.ts tests/ebrain/apps/base/types.test.ts` exited 0 |
+| `bun run verify` | PASS | privacy/proposal PII/test names/JSONB/source-id/progress/test-isolation/WASM/admin build/admin scope/CLI/system-of-record/eval glossary/synthetic corpus/typecheck all exited 0 |
+| `bun test test/operations*.test.ts test/parity.test.ts` | PASS | 57 pass, 0 fail, 995 assertions |
+| Core reverse-dependency grep | PASS | `grep -rnE "from '\.\./\.\./\.\./ebrain" src/core/` returned empty output |
+
+## Dummy Interface Coverage
+
+- `TokenManager`: dummy `getToken`, `refresh`, and `isExpired` implementation passes.
+- `WebhookHandler`: dummy `verify` and `decode` returns a vendor-neutral `Event` with `eventId`, `eventType`, `receivedAt`, and `payload`.
+- `TieredRateLimiter`: dummy `acquire`/`release` covers `app:feishu`, `tenant:vx.feishu.cn`, and `user:ou_xxx` key shapes.
+- `BotAdapter`: dummy `onMention`, `sendReply`, `pushToUser`, and `pushToChannel` implementation passes.
+- `EnterpriseApp`: full dummy includes all sub-capabilities; Tencent Meeting dummy omits optional webhook/bot fields and still satisfies the interface.
+- `EnterpriseConnector`: dummy connector requires non-optional `app` and transforms raw input into `EnterpriseIngestObject`.
+- Literal strictness sentinels cover `EnterpriseAppType`, `TokenKind`, `ClassificationLevel`, `EnterpriseObjectType`, `EnterpriseSourceType`, `RateLimitTier`, and non-optional `EnterpriseConnector.app`.
+
+## ADR / Invariant Notes
+
+- I-04: satisfied by `EnterpriseIngestObject.classification?: 'L0' | 'L1' | 'L2' | 'L3'`.
+- I-09: satisfied by a single strict base `EnterpriseApp` interface and sub-capability interfaces reused by all future vendor adapters.
+- I-12: B1 changed only `src/ebrain/apps/base/*`, `tests/ebrain/apps/base/*`, and this summary; no gbrain core/runtime implementation was modified.
+
+## New Dependencies
+
+- Root package dependencies: none.
+- Root lockfile changes: none.
+- `bun add` / `npm install` new dependency actions: none.
