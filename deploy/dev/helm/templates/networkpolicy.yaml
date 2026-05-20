@@ -2,6 +2,12 @@
 {{- if eq (len .Values.networkPolicy.httpsEgressCidrs) 0 }}
 {{- fail "networkPolicy.httpsEgressCidrs is empty. Set company-approved SaaS egress CIDRs in values.dev.yaml or --set before deploy." }}
 {{- end }}
+{{- range $i, $cidr := .Values.networkPolicy.httpsEgressCidrs }}
+{{- $trimmedCidr := (toString $cidr | trim) }}
+{{- if not (regexMatch "^[0-9]{1,3}\\.[0-9]{1,3}\\.[0-9]{1,3}\\.[0-9]{1,3}/[0-9]{1,2}$" $trimmedCidr) }}
+{{- fail (printf "networkPolicy.httpsEgressCidrs[%d] is invalid: %q. Must be a non-empty IPv4 CIDR like 10.0.0.0/8." $i $cidr) }}
+{{- end }}
+{{- end }}
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -42,7 +48,7 @@ spec:
     {{- range .Values.networkPolicy.httpsEgressCidrs }}
     - to:
         - ipBlock:
-            cidr: {{ . }}
+            cidr: {{ . | toString | trim }}
       ports:
         - protocol: TCP
           port: 443

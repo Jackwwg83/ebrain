@@ -885,3 +885,29 @@ bun run typecheck
 bun test tests/ebrain/
 # 28 pass / 0 fail
 ```
+
+## A5 Fixwave Round 3
+
+Reviewer report: `/Users/jackwu/Projects/EBRAIN_STAGE_A5_REVIEW_ROUND2.md`,
+verdict `FIX_RECOMMENDED`; blocking item R2-M-001 fixed by validating every
+`networkPolicy.httpsEgressCidrs` entry as a non-empty IPv4 CIDR-shaped string.
+
+Round 3 verification:
+
+```text
+helm template ebrain-dev deploy/dev/helm --values deploy/dev/helm/values.dev.yaml 2>&1 | grep -E "fail|FAIL|Error"
+# Error: execution error at (ebrain-dev/templates/networkpolicy.yaml:3:4): networkPolicy.httpsEgressCidrs is empty. Set company-approved SaaS egress CIDRs in values.dev.yaml or --set before deploy.
+
+helm template ebrain-dev deploy/dev/helm --values deploy/dev/helm/values.dev.yaml --set 'networkPolicy.httpsEgressCidrs={}' 2>&1 | grep -E "fail|FAIL|Error"
+# Error: execution error at (ebrain-dev/templates/networkpolicy.yaml:8:4): networkPolicy.httpsEgressCidrs[0] is invalid: "". Must be a non-empty IPv4 CIDR like 10.0.0.0/8.
+
+helm template ebrain-dev deploy/dev/helm --values deploy/dev/helm/values.dev.yaml --set 'networkPolicy.httpsEgressCidrs[0]=' 2>&1 | grep -E "fail|FAIL|Error"
+# Error: execution error at (ebrain-dev/templates/networkpolicy.yaml:8:4): networkPolicy.httpsEgressCidrs[0] is invalid: "". Must be a non-empty IPv4 CIDR like 10.0.0.0/8.
+
+helm template ebrain-dev deploy/dev/helm --values deploy/dev/helm/values.dev.yaml --set 'networkPolicy.httpsEgressCidrs[0]=10.0.0.0/8' > /tmp/a5-r3-valid.yaml; echo "exit=$?"; grep -n "cidr: 10.0.0.0/8" /tmp/a5-r3-valid.yaml
+# exit=0
+# 47:            cidr: 10.0.0.0/8
+
+helm template ebrain-dev deploy/dev/helm --values deploy/dev/helm/values.dev.yaml --set 'networkPolicy.httpsEgressCidrs[0]=not-a-cidr' 2>&1 | grep -E "fail|FAIL|Error"
+# Error: execution error at (ebrain-dev/templates/networkpolicy.yaml:8:4): networkPolicy.httpsEgressCidrs[0] is invalid: "not-a-cidr". Must be a non-empty IPv4 CIDR like 10.0.0.0/8.
+```
