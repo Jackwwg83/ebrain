@@ -39,6 +39,68 @@ describe('computeConflictHash', () => {
     expect(first).not.toBe(second);
   });
 
+  test('corroborating source produces same hash (F1-H-001 regression)', () => {
+    const args1 = {
+      entitySlug: 'acme',
+      factKey: 'arr',
+      values: [
+        { value: 120, sourceType: 'salesforce' },
+        { value: 124, sourceType: 'erp' },
+      ],
+    };
+    const args2 = {
+      ...args1,
+      values: [
+        ...args1.values,
+        { value: 124, sourceType: 'finance-dwh' },
+      ],
+    };
+
+    expect(computeConflictHash(args1)).toBe(computeConflictHash(args2));
+  });
+
+  test('same values different source order produces same hash', () => {
+    const hash1 = computeConflictHash({
+      entitySlug: 'acme',
+      factKey: 'arr',
+      values: [
+        { value: 120, sourceType: 'a' },
+        { value: 124, sourceType: 'b' },
+      ],
+    });
+    const hash2 = computeConflictHash({
+      entitySlug: 'acme',
+      factKey: 'arr',
+      values: [
+        { value: 124, sourceType: 'b' },
+        { value: 120, sourceType: 'a' },
+      ],
+    });
+
+    expect(hash1).toBe(hash2);
+  });
+
+  test('different distinct values produces different hash', () => {
+    const hash1 = computeConflictHash({
+      entitySlug: 'acme',
+      factKey: 'arr',
+      values: [
+        { value: 120, sourceType: 'a' },
+        { value: 124, sourceType: 'b' },
+      ],
+    });
+    const hash2 = computeConflictHash({
+      entitySlug: 'acme',
+      factKey: 'arr',
+      values: [
+        { value: 120, sourceType: 'a' },
+        { value: 130, sourceType: 'b' },
+      ],
+    });
+
+    expect(hash1).not.toBe(hash2);
+  });
+
   test('changes when entity or fact key changes', () => {
     const base = computeConflictHash({
       entitySlug: 'acme',

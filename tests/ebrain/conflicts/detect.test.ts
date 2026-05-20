@@ -193,4 +193,27 @@ describe('detectFactConflicts', () => {
     const second = await detectFactConflicts(ctx);
     expect(second).toEqual({ conflictsDetected: 1, conflictsInserted: 0 });
   });
+
+  test('corroborating source does not insert duplicate conflict row (F1-H-001)', async () => {
+    const first = await detectFactConflicts(ctx);
+    expect(first).toEqual({ conflictsDetected: 1, conflictsInserted: 1 });
+
+    await seedClaim({
+      sourceType: 'finance-dwh',
+      pageSlug: 'finance-dwh/acme-arr',
+      value: 124,
+      confidence: 0.89,
+    });
+
+    const second = await detectFactConflicts(ctx);
+    expect(second).toEqual({ conflictsDetected: 1, conflictsInserted: 0 });
+
+    const rows = await engine.executeRaw<{ row_count: number }>(
+      `SELECT COUNT(*)::int AS row_count
+         FROM enterprise_fact_conflicts
+        WHERE entity_slug = $1`,
+      ['acme'],
+    );
+    expect(rows[0].row_count).toBe(1);
+  });
 });

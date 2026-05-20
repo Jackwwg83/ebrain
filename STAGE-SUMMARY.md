@@ -1671,3 +1671,45 @@ STAGE-SUMMARY.md
 - No private Ebrain fence parser was created. Round-trip tests call gbrain `renderFactsTable` directly and assert the begin/end markers occur exactly once, preserving the R5-M-001 no-double-wrap guard.
 - `detectFactConflicts` does not call `chooseWinningClaim` and does not set `winning_value` / `winning_source`; conflict resolution remains an ops/manual workflow.
 - The requested `test/extract-facts.test.ts` file is not present in this repo snapshot; the actual gbrain facts extraction regression files present under `test/` were run instead and passed.
+
+# Stage F1 Fixwave Round 1: conflict_hash source-identity dedupe
+
+## Status
+
+- Stage: F1 Fixwave Round 1
+- Branch: `ebrain-mvp`
+- Baseline: `2c4b14f35c1187d11069144e2b8319f526e73db4`
+- Reviewer finding: F1-H-001
+- Scope: make `conflict_hash` depend on distinct normalized competing values only, while preserving source evidence in `enterprise_fact_conflicts.competing_values`
+- Result: PASS locally. A corroborating source for an already-competing value now produces the same `conflict_hash` and does not add a duplicate `enterprise_fact_conflicts` row.
+
+## Fix
+
+- `src/ebrain/conflicts/conflict-hash.ts`: changed the canonical hash input from sorted `sourceType|value` evidence fingerprints to sorted and deduped stable JSON values.
+- `sourceType` remains in the public hash args and, for inserted conflict rows, still flows through `detectFactConflicts()` into `competing_values`; it is intentionally ignored by `computeConflictHash()`.
+- `tests/ebrain/conflicts/conflict-hash.test.ts`: added F1-H-001 regression coverage for a corroborating source, source order independence, and different distinct values.
+- `tests/ebrain/conflicts/detect.test.ts`: added a PGLite-backed regression proving a second detect after `finance-dwh=124` returns `conflictsInserted: 0` and leaves one conflict row for `acme`.
+
+## Verification Evidence
+
+| Check | Result | Evidence |
+|---|---|---|
+| Start state | PASS | `git rev-parse HEAD` -> `2c4b14f35c1187d11069144e2b8319f526e73db4`; initial `git status --short` was empty |
+| F1-H-001 hash regression | PASS | `bun test tests/ebrain/conflicts/` -> 15 pass, 0 fail, 32 expect() calls |
+| Runtime artifact inspection | PASS | `detect.test.ts` seeds PGLite `facts` rows for `salesforce=120`, `erp=124`, then `finance-dwh=124`; second detect returns `{ conflictsDetected: 1, conflictsInserted: 0 }` and `COUNT(*)::int` from `enterprise_fact_conflicts` for `acme` is `1` |
+| Typecheck | PASS | `bun run typecheck` -> `tsc --noEmit` exited 0 |
+| Core diff guard | PASS | `git diff 2c4b14f3 -- 'src/core/' 'src/mcp/' 'src/commands/'` returned empty before commit |
+
+## Files Changed
+
+```text
+src/ebrain/conflicts/conflict-hash.ts
+tests/ebrain/conflicts/conflict-hash.test.ts
+tests/ebrain/conflicts/detect.test.ts
+STAGE-SUMMARY.md
+```
+
+## Runtime Notes
+
+- No production/staging conflict detector traffic was exercised in this fixwave. The end-to-end evidence is local PGLite schema migration plus real `facts` inserts, real `detectFactConflicts(ctx)` calls, and direct SQL inspection of the produced `enterprise_fact_conflicts` row.
+- Existing `ON CONFLICT (entity_slug, fact_key, conflict_hash) DO NOTHING` behavior remains unchanged; the fix makes the conflict hash stable when new source evidence corroborates an existing distinct value.

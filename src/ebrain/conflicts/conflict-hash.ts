@@ -23,8 +23,9 @@ function stableJson(value: unknown): string {
 }
 
 export function computeConflictHash(args: ConflictHashArgs): string {
-  const valueFingerprint = args.values
-    .map((value) => `${value.sourceType}|${stableJson(value.value)}`)
+  const valueFingerprint = Array.from(
+    new Set(args.values.map((value) => stableJson(value.value))),
+  )
     .sort()
     .join(';');
   const canonical = `${args.entitySlug}:${args.factKey}:${valueFingerprint}`;
