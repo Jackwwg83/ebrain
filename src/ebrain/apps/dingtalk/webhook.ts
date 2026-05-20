@@ -15,22 +15,26 @@ type RequestWithQuery = IncomingRequest & {
 
 export class DingtalkWebhookHandler implements WebhookHandler {
   private readonly signingSecret?: string;
-  private readonly token?: string;
   private readonly aesKey?: string;
   private readonly corpId?: string;
+  private readonly allowPlaintextWebhook: boolean;
   private readonly now: () => Date;
   private readonly replayKeys = new Map<string, number>();
 
   constructor(config: DingtalkWebhookHandlerConfig) {
     this.signingSecret = config.signingSecret ?? config.token;
-    this.token = config.token;
     this.aesKey = config.aesKey;
     this.corpId = config.corpId;
+    this.allowPlaintextWebhook = config.allowPlaintextWebhook ?? false;
     this.now = config.now ?? (() => new Date());
   }
 
   async verify(req: IncomingRequest): Promise<boolean> {
-    if (!this.signingSecret && !this.token) return false;
+    if (!this.signingSecret) return false;
+    const rawBody = rawBodyToString(req.rawBody);
+    const parsedBody = parseJsonObject(rawBody);
+    if (!parsedBody) return false;
+
     const timestamp = readParam(req, 'timestamp');
     const nonce = readParam(req, 'nonce');
     const sign = readParam(req, 'sign') ?? readParam(req, 'signature') ?? readParam(req, 'msg_signature');
@@ -42,26 +46,38 @@ export class DingtalkWebhookHandler implements WebhookHandler {
     if (Math.abs(nowMs - timestampMs) > DINGTALK_WEBHOOK_REPLAY_WINDOW_MS) return false;
 
     const decodedSign = decodeURIComponent(sign);
-    const replayKey = `${timestamp}:${nonce}:${decodedSign}`;
+    const replayKey = `${timestamp}:${nonce}`;
     this.pruneReplayKeys(nowMs);
     if ((this.replayKeys.get(replayKey) ?? 0) > nowMs) return false;
-    const encryptedBody = parseEncryptedBody(req.rawBody);
-    if (encryptedBody && this.token) {
-      const encryptedExpected = createDingtalkEncryptedWebhookSignature({
-        token: this.token,
-        timestamp,
-        nonce,
-        encrypt: encryptedBody,
-      });
-      if (safeCompare(decodedSign, encryptedExpected)) {
-        this.replayKeys.set(replayKey, nowMs + DINGTALK_WEBHOOK_REPLAY_WINDOW_MS);
-        return true;
+
+    const encryptedBody = typeof parsedBody.encrypt === 'string' ? parsedBody.encrypt : null;
+    let signedBodyContent: string;
+    if (encryptedBody) {
+      if (!this.aesKey) return false;
+      try {
+        const decryptedPlaintext = decryptDingtalkCallbackPayload(encryptedBody, this.aesKey, this.corpId);
+        signedBodyContent = decryptedPlaintext;
+      } catch {
+        return false;
       }
+    } else {
+      if (!this.allowPlaintextWebhook) return false;
+      signedBodyContent = rawBody;
     }
 
-    if (!this.signingSecret) return false;
-    const expected = createDingtalkWebhookSignature({ timestamp, nonce, secret: this.signingSecret });
-    const expectedHex = createDingtalkWebhookSignature({ timestamp, nonce, secret: this.signingSecret, encoding: 'hex' });
+    const expected = createDingtalkWebhookSignature({
+      timestamp,
+      nonce,
+      secret: this.signingSecret,
+      bodyContent: signedBodyContent,
+    });
+    const expectedHex = createDingtalkWebhookSignature({
+      timestamp,
+      nonce,
+      secret: this.signingSecret,
+      bodyContent: signedBodyContent,
+      encoding: 'hex',
+    });
     const verified = safeCompare(decodedSign, expected) || safeCompare(decodedSign, expectedHex);
     if (verified) this.replayKeys.set(replayKey, nowMs + DINGTALK_WEBHOOK_REPLAY_WINDOW_MS);
     return verified;
@@ -74,7 +90,7 @@ export class DingtalkWebhookHandler implements WebhookHandler {
   }
 
   async decode(req: IncomingRequest): Promise<Event> {
-    const rawBody = typeof req.rawBody === 'string' ? req.rawBody : Buffer.from(req.rawBody).toString('utf8');
+    const rawBody = rawBodyToString(req.rawBody);
     const rawPayload = JSON.parse(rawBody) as DingtalkWebhookPayload & { encrypt?: string };
     if (rawPayload.encrypt && !this.aesKey) {
       throw new Error('DingTalk encrypted callback requires AESKey');
@@ -98,12 +114,14 @@ export function createDingtalkWebhookSignature(args: {
   timestamp: string;
   nonce: string;
   secret: string;
+  bodyContent?: string | Uint8Array;
   encoding?: 'base64' | 'hex';
 }): string {
   const encoding = args.encoding ?? 'base64';
+  const bodyContent = args.bodyContent === undefined ? '' : rawBodyToString(args.bodyContent);
   return crypto
     .createHmac('sha256', args.secret)
-    .update(`${args.timestamp}\n${args.nonce}`)
+    .update(`${args.timestamp}\n${args.nonce}\n${bodyContent}`)
     .digest(encoding);
 }
 
@@ -232,11 +250,16 @@ function parseTimestampMs(value: string | number): number | null {
   return numeric < 1_000_000_000_000 ? numeric * 1000 : numeric;
 }
 
-function parseEncryptedBody(rawBody: string | Uint8Array): string | null {
+function rawBodyToString(rawBody: string | Uint8Array): string {
+  return typeof rawBody === 'string' ? rawBody : Buffer.from(rawBody).toString('utf8');
+}
+
+function parseJsonObject(rawBody: string): Record<string, unknown> | null {
   try {
-    const body = typeof rawBody === 'string' ? rawBody : Buffer.from(rawBody).toString('utf8');
-    const payload = JSON.parse(body) as { encrypt?: unknown };
-    return typeof payload.encrypt === 'string' ? payload.encrypt : null;
+    const payload = JSON.parse(rawBody) as unknown;
+    return payload !== null && typeof payload === 'object' && !Array.isArray(payload)
+      ? payload as Record<string, unknown>
+      : null;
   } catch {
     return null;
   }

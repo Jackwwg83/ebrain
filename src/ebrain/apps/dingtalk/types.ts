@@ -12,6 +12,7 @@ export interface DingtalkCredentialConfig {
   aesKey?: string;
   token?: string;
   signingSecret?: string;
+  allowPlaintextWebhook?: boolean;
 }
 
 export interface DingtalkRuntimeConfig extends DingtalkCredentialConfig {

@@ -79,6 +79,7 @@ export class DingtalkEnterpriseApp implements EnterpriseApp {
       aesKey: this.aesKey,
       token: this.token,
       signingSecret: config.signingSecret,
+      allowPlaintextWebhook: config.allowPlaintextWebhook,
       now: config.now,
     });
     this.botAdapter = new DingtalkBotAdapter({

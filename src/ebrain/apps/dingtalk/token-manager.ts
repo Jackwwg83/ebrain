@@ -50,6 +50,11 @@ export class DingtalkTokenManager implements TokenManager {
     this.appKey = config.appKey;
     this.encryptedAppSecret = config.encryptedAppSecret;
     this.corpId = config.corpId;
+    if (!config.corpId) {
+      console.warn(
+        '[DingtalkTokenManager] corpId not configured; token scope will fall back to "app". For multi-tenant isolation, set corpId on EnterpriseApp config.',
+      );
+    }
     this.apiBaseUrl = normalizeBaseUrl(config.apiBaseUrl);
     this.engine = config.engine;
     this.fetchImpl = config.fetch ?? defaultFetch();

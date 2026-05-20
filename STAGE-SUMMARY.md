@@ -1421,3 +1421,50 @@ Captured before appending this C2 section to `STAGE-SUMMARY.md`:
 - C2 is unit/local integration complete. The public webhook route itself is still D2 scope; C2 provides handler capability and connector behavior.
 - Real company DingTalk traffic is expected at M-D3 after PM configures the dev callback URL and credentials.
 - Fixture data is synthetic but non-empty and vendor-shaped; no production/customer payloads are committed.
+
+# Stage C2 Fixwave Round 1: Webhook HMAC Body Bind
+
+## Status
+
+- Stage: C2 Fixwave Round 1
+- Branch: `ebrain-mvp`
+- Baseline: `f07b0e75` (`Stage C2: DingTalk EnterpriseApp + 5 sub-connectors + fixtures`)
+- Scope: H-001 webhook body binding, M-001 replay regression, L-001 corpId warning
+- Result: PASS locally; M-D3 dev deployment blocker H-001 is fixed in code and tests
+
+## Fixes
+
+- H-001: `DingtalkWebhookHandler.verify()` now parses JSON payloads, requires encrypted callback bodies by default, and only allows plaintext fallback when `allowPlaintextWebhook` is explicitly enabled.
+- H-001: HMAC input now includes body content as `${timestamp}\n${nonce}\n${bodyContent}`. Plaintext mode signs the raw body; encrypted mode decrypts `encrypt` and signs the decrypted plaintext before comparing `sign` / `msg_signature`.
+- H-001: Replay cache key is now `${timestamp}:${nonce}`, so a nonce accepted once cannot be reused with a different signature/body inside the five-minute window.
+- M-001: Added same-nonce replay regression coverage to `tests/ebrain/apps/dingtalk/webhook.test.ts`.
+- L-001: `DingtalkTokenManager` now warns during construction when `corpId` is absent and token scope will fall back to `"app"`.
+
+## Verification Evidence
+
+| Check | Result | Evidence |
+|---|---|---|
+| `bun run typecheck` | PASS | `tsc --noEmit` exited 0 |
+| DingTalk focused tests | PASS | `bun test tests/ebrain/apps/dingtalk/` -> 27 pass, 0 fail, 90 expect() calls |
+| Core regression tests | PASS | `bun test test/operations*.test.ts test/parity.test.ts` -> 57 pass, 0 fail, 995 expect() calls |
+| Full verify | PASS | `bun run verify` -> privacy, PII, JSONB, source-id, progress, isolation, WASM, admin build, CLI, system-of-record, eval glossary, corpus privacy, and typecheck all passed |
+| H-001 tamper tests | PASS | plaintext tamper, encrypted decrypted-plaintext tamper, and default-plaintext rejection all return `false` |
+| M-001 replay test | PASS | same request verifies `true` once and `false` on second use of the nonce |
+| L-001 warning test | PASS | missing `corpId` constructor path emits the expected `console.warn` |
+
+## Files Changed
+
+```text
+src/ebrain/apps/dingtalk/app.ts
+src/ebrain/apps/dingtalk/token-manager.ts
+src/ebrain/apps/dingtalk/types.ts
+src/ebrain/apps/dingtalk/webhook.ts
+tests/ebrain/apps/dingtalk/token-manager.test.ts
+tests/ebrain/apps/dingtalk/webhook.test.ts
+STAGE-SUMMARY.md
+```
+
+## Runtime Notes
+
+- No live DingTalk callback traffic was exercised in this fixwave; validation used local encrypted webhook fixtures and synthetic DingTalk-shaped payloads.
+- Public webhook routing and M-D3 dev environment traffic remain the next runtime gate after this blocker fix is deployed.

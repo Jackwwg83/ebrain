@@ -82,6 +82,30 @@ describe('DingtalkTokenManager', () => {
     await expect(tm.refresh('refresh')).rejects.toThrow('not yet implemented');
   });
 
+  test('constructor warns when corpId is missing and scope falls back to app', () => {
+    const originalWarn = console.warn;
+    const warnings: unknown[][] = [];
+    console.warn = (...args: unknown[]) => {
+      warnings.push(args);
+    };
+
+    try {
+      new DingtalkTokenManager({
+        appId: 'dingtalk-dev',
+        appKey: 'ding-test-key',
+        encryptedAppSecret: encrypt('ding-secret'),
+        engine,
+        now: () => new Date('2026-05-20T02:00:00.000Z'),
+      });
+    } finally {
+      console.warn = originalWarn;
+    }
+
+    expect(warnings).toEqual([[
+      '[DingtalkTokenManager] corpId not configured; token scope will fall back to "app". For multi-tenant isolation, set corpId on EnterpriseApp config.',
+    ]]);
+  });
+
   test('isExpired treats missing and 30-minute-skew tokens as expired', async () => {
     const tm = manager(undefined, () => new Date('2026-05-20T02:00:00.000Z'));
     expect(await tm.isExpired('tenant_access')).toBe(true);
