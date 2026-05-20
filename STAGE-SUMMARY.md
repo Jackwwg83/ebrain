@@ -1713,3 +1713,64 @@ STAGE-SUMMARY.md
 
 - No production/staging conflict detector traffic was exercised in this fixwave. The end-to-end evidence is local PGLite schema migration plus real `facts` inserts, real `detectFactConflicts(ctx)` calls, and direct SQL inspection of the produced `enterprise_fact_conflicts` row.
 - Existing `ON CONFLICT (entity_slug, fact_key, conflict_hash) DO NOTHING` behavior remains unchanged; the fix makes the conflict hash stable when new source evidence corroborates an existing distinct value.
+
+# Stage F2: Enterprise Cycle 6 Phase + Shard Partition
+
+## Status
+
+- Stage: F2
+- Branch: `ebrain-mvp`
+- Baseline: `388231e5`
+- Scope: independent Ebrain enterprise cycle with 8 shard Minions fan-out, SQL `hashtext(slug)` shard queries, compiled truth refresh, and Stage F2 executive brief stub.
+- Result: PASS locally. F2 does not modify gbrain dream-cycle core and does not generate real executive brief content before E2.
+
+## Implementation
+
+- `src/ebrain/cycle/shard.ts`: added `SHARD_COUNT = 8`, deterministic TS `computeShard(slug)`, shard index validation, and SQL-side `hashtext(slug)` shard listing with negative modulo normalization.
+- `src/ebrain/cycle/refresh-entity-aliases.ts`: added a narrow phase-2 alias refresh for entity pages in the shard from page title/frontmatter aliases into `enterprise_entity_aliases`.
+- `src/ebrain/cycle/refresh-compiled-truth.ts`: added shard-scoped entity page scan, fact grouping from `enterprise_fact_claims_view`, `chooseWinningClaim` integration, and `putPage` write-back to `frontmatter.compiled_truth`.
+- `src/ebrain/cycle/precompute-briefs.ts`: implemented the required F2 stub only; it logs `stub - awaiting E2 wire` and returns `{ briefsGenerated: 0 }`.
+- `src/ebrain/jobs/dream-cycle-enterprise.ts`: implemented parent/child handler paths. Parent jobs submit 8 `ebrain-enterprise-cycle-shard` child jobs with `on_child_fail: 'continue'`, persist child ids, and aggregate `child_done` inbox results. Child jobs run the 6 phases in order with per-phase try/catch so a phase error does not block later phases.
+- `src/commands/jobs.ts`: appended lazy registration for `ebrain-enterprise-cycle` and `ebrain-enterprise-cycle-shard` using the same lazy import pattern as prior Ebrain job handlers.
+- `enterprise-recipes/cron/enterprise-cron.yml`: added the daily 3am enterprise-cycle example cron with `enterprise-cycle:{{date}}` idempotency key template.
+
+## Verification Evidence
+
+| Check | Result | Evidence |
+|---|---|---|
+| Start state | PASS | `git status --short` was empty; `git rev-parse --short HEAD` -> `388231e5`; `git branch --show-current` -> `ebrain-mvp` |
+| Shard distribution | PASS | `bun test tests/ebrain/cycle/shard.test.ts` -> 3 pass, 0 fail, 20 expect() calls; 10000 mock slugs stayed within 1250 +/- 10% per shard |
+| F2 targeted tests | PASS | `bun test tests/ebrain/cycle/ tests/ebrain/jobs/` -> 13 pass, 0 fail, 63 expect() calls |
+| Runtime artifact inspection | PASS | `refresh-compiled-truth.test.ts` runs a real PGLite v200 schema, inserts an entity page plus `salesforce=120` and `erp=124` typed facts, runs `refreshCompiledTruth`, then directly reads the produced page frontmatter: `compiled_truth.arr = { value: 124, source: 'erp' }` |
+| 6 phase order and phase isolation | PASS | `dream-cycle-enterprise.test.ts` mocks all 6 phase functions, forces phase 3 to throw, and verifies observed order `phase 1 -> phase 2 -> phase 3 -> phase 4 -> phase 5 -> phase 6` with `failedPhases: 1` and later phases still counted |
+| Parent/child fan-out | PASS | `dream-cycle-enterprise.test.ts` verifies parent path submits 8 `ebrain-enterprise-cycle-shard` jobs with shard indexes 0..7 and `on_child_fail: 'continue'`; aggregation counts 7 completed and 1 failed child without blocking siblings |
+| Phase 6 stub | PASS | `rg -n "stub - awaiting E2|Stage F2 stub" src/ebrain/cycle/precompute-briefs.ts` shows the JSDoc stub marker and the runtime log line |
+| Handler registration | PASS | `rg -n "ebrain-enterprise-cycle|ebrain-enterprise-cycle-shard" src/commands/jobs.ts src/ebrain/jobs/dream-cycle-enterprise.ts enterprise-recipes/cron/enterprise-cron.yml` shows both registered job names and cron job_name |
+| Typecheck | PASS | `bun run typecheck` -> `tsc --noEmit` exited 0 |
+| Full verify | PASS | `bun run verify` -> privacy, proposal PII, test names, JSONB, source-id projection, progress, isolation, WASM, admin build, admin scope, CLI executable, system-of-record, eval glossary, synthetic corpus privacy, and typecheck all passed |
+| gbrain core/mcp untouched | PASS | `git diff 388231e5..HEAD -- 'src/core/' 'src/mcp/'` returned empty |
+| `src/commands/jobs.ts` append-only guard | PASS | `git diff -- src/commands/jobs.ts | grep -cE '^-[^-]'` -> `0` deletions |
+
+## Files Changed
+
+```text
+enterprise-recipes/cron/enterprise-cron.yml
+src/commands/jobs.ts
+src/ebrain/cycle/index.ts
+src/ebrain/cycle/precompute-briefs.ts
+src/ebrain/cycle/refresh-compiled-truth.ts
+src/ebrain/cycle/refresh-entity-aliases.ts
+src/ebrain/cycle/shard.ts
+src/ebrain/jobs/dream-cycle-enterprise.ts
+tests/ebrain/cycle/refresh-compiled-truth.test.ts
+tests/ebrain/cycle/shard.test.ts
+tests/ebrain/jobs/dream-cycle-enterprise.test.ts
+STAGE-SUMMARY.md
+```
+
+## Runtime Notes
+
+- F2 phase 6 is intentionally a stub because E2 is not implemented yet. It does not write placeholder brief files and does not fabricate executive brief content.
+- Parent fan-out uses Minions child jobs. In the real worker path the parent first submits children and persists `childJobIds`; after child terminal transitions emit `child_done`, the parent aggregates the inbox on its next claim.
+- Phase 4 currently calls the F1 `detectFactConflicts(ctx)` as delivered. That F1 function is global rather than shard-filtered, so F2 relies on the F1 conflict-hash dedupe for repeated shard invocations until a later stage adds a shard-aware detector contract.
+- No production or staging cron traffic was exercised in this local run. The end-to-end evidence is local PGLite runtime output plus Minions fan-out/aggregation unit coverage.

@@ -1,3 +1,10 @@
-/** Enterprise cycle scaffold placeholder. */
-/** Stage F2 will export enterprise cycle phases. */
-export {};
+export { SHARD_COUNT, computeShard, listSlugsInShard } from './shard.ts';
+export type { ListSlugsInShardOpts } from './shard.ts';
+export { extractFactsEnterprise } from './extract-facts-enterprise.ts';
+export type { ExtractFactsEnterpriseOpts, ExtractFactsEnterpriseResult } from './extract-facts-enterprise.ts';
+export { refreshEntityAliases } from './refresh-entity-aliases.ts';
+export type { RefreshEntityAliasesOpts, RefreshEntityAliasesResult } from './refresh-entity-aliases.ts';
+export { refreshCompiledTruth } from './refresh-compiled-truth.ts';
+export type { RefreshCompiledTruthOpts, RefreshCompiledTruthResult } from './refresh-compiled-truth.ts';
+export { precomputeBriefs } from './precompute-briefs.ts';
+export type { PrecomputeBriefsOpts, PrecomputeBriefsResult } from './precompute-briefs.ts';

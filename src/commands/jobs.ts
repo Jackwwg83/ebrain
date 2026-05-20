@@ -1160,6 +1160,25 @@ export async function registerBuiltinHandlers(worker: MinionWorker, engine: Brai
   // Compatibility alias for the existing dev runbook manual enqueue command.
   worker.register('token-refresh', ebrainTokenRefreshHandler);
 
+  const ebrainEnterpriseCycleHandler: MinionHandler = async (job) => {
+    const { dreamCycleEnterpriseHandler } = await import('../ebrain/jobs/dream-cycle-enterprise.ts');
+    const ctx: OperationContext = {
+      engine,
+      config: { engine: engine.kind },
+      logger: {
+        info: (msg) => process.stderr.write(`[ebrain-enterprise-cycle] ${msg}\n`),
+        warn: (msg) => process.stderr.write(`[ebrain-enterprise-cycle] WARN ${msg}\n`),
+        error: (msg) => process.stderr.write(`[ebrain-enterprise-cycle] ERROR ${msg}\n`),
+      },
+      dryRun: false,
+      remote: false,
+      sourceId: 'enterprise',
+    } as OperationContext;
+    return dreamCycleEnterpriseHandler(ctx, job);
+  };
+  worker.register('ebrain-enterprise-cycle', ebrainEnterpriseCycleHandler);
+  worker.register('ebrain-enterprise-cycle-shard', ebrainEnterpriseCycleHandler);
+
   // Shell handler is always registered. Runtime env guard lives inside the
   // handler so claimed jobs emit a clear rejection log on workers missing
   // GBRAIN_ALLOW_SHELL_JOBS=1.
