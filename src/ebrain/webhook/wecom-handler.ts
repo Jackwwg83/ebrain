@@ -1,3 +1,3 @@
-/** Placeholder for WeCom webhook handling. */
-/** Implementation belongs to Stage C3. */
-export {};
+import { createWebhookHandler } from '../bot/router.ts';
+
+export const wecomHandler = createWebhookHandler('wecom');

@@ -1,3 +1,4 @@
-/** Enterprise IM bot scaffold placeholder. */
-/** Stage D2 will export router and reply helpers. */
-export {};
+export * from './intent-classifier.ts';
+export * from './push-orchestrator.ts';
+export * from './reply-formatter.ts';
+export * from './router.ts';

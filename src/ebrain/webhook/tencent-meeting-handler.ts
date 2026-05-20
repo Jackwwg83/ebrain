@@ -1,3 +1,3 @@
-/** Placeholder for Tencent Meeting webhook handling. */
-/** Implementation belongs to Stage C4. */
-export {};
+import { createWebhookHandler } from '../bot/router.ts';
+
+export const tencentMeetingHandler = createWebhookHandler('tencent-meeting');

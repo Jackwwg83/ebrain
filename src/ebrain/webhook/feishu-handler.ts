@@ -1,3 +1,3 @@
-/** Placeholder for Feishu webhook handling. */
-/** Implementation belongs to Stage C1. */
-export {};
+import { createWebhookHandler } from '../bot/router.ts';
+
+export const feishuHandler = createWebhookHandler('feishu');

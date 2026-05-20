@@ -24,8 +24,9 @@
 
 import type { BrainEngine } from '../../engine.ts';
 import type { GBrainConfig } from '../../config.ts';
-import { operations } from '../../operations.ts';
-import type { Operation, OperationContext } from '../../operations.ts';
+import { OperationError, operations } from '../../operations.ts';
+import type { AuthInfo, Operation, OperationContext } from '../../operations.ts';
+import type { ExecutiveProfile } from '../../types.ts';
 import { paramDefToSchema } from '../../../mcp/tool-defs.ts';
 import type { ToolCtx, ToolDef } from '../types.ts';
 
@@ -64,6 +65,20 @@ export const BRAIN_TOOL_ALLOWLIST: ReadonlySet<string> = new Set([
   // The cycle synthesize phase already calls discoverTranscripts directly.
   'get_recent_salience',
   'find_anomalies',
+]);
+
+// Extra operations that stay out of the default subagent registry but can be
+// enabled by authenticated trusted submitters through an explicit allowed_tools subset.
+const EXPLICIT_EXTRA_BRAIN_TOOLS: ReadonlySet<string> = new Set([
+  'takes_list',
+]);
+
+// Ebrain D2 policy names that are intentionally present in BOT_ALLOWED_OPS
+// before their G1 operation registration lands. They are skipped when absent
+// from the runtime registry, while all other unknown names still fail closed.
+const OPTIONAL_FUTURE_EBRAIN_TOOLS: ReadonlySet<string> = new Set([
+  'list_executives',
+  'get_executive_context',
 ]);
 
 /** Matches Anthropic's tool-name constraint. No dots. */
@@ -134,7 +149,7 @@ export interface BuildBrainToolsOpts {
   subagentId: number;
   engine: BrainEngine;
   config: GBrainConfig;
-  /** Optional filter: only include names in this set. */
+  /** Optional filter: only include op/tool names in this set. */
   allowedNames?: ReadonlySet<string>;
   /**
    * Connected-gbrains brain id (v0.19+, PR 0 plumbing only).
@@ -159,6 +174,21 @@ export interface BuildBrainToolsOpts {
    * SubagentHandlerData.allowed_slug_prefixes via the handler.
    */
   allowedSlugPrefixes?: readonly string[];
+  /**
+   * Optional; set by Ebrain bot router to thread executive actor + enterprise source.
+   * gbrain core callers leave undefined, falls back to hardcoded defaults.
+   */
+  auth?: AuthInfo;
+  /**
+   * Optional; set by Ebrain bot router to thread executive actor + enterprise source.
+   * gbrain core callers leave undefined, falls back to hardcoded defaults.
+   */
+  executive?: ExecutiveProfile;
+  /**
+   * Optional; set by Ebrain bot router to thread executive actor + enterprise source.
+   * gbrain core callers leave undefined, falls back to hardcoded defaults.
+   */
+  sourceId?: string;
 }
 
 interface OpContextDeps {
@@ -169,6 +199,9 @@ interface OpContextDeps {
   signal?: AbortSignal;
   brainId?: string;
   allowedSlugPrefixes?: readonly string[];
+  auth?: AuthInfo;
+  executive?: ExecutiveProfile;
+  sourceId?: string;
 }
 
 function buildOpContext(deps: OpContextDeps): OperationContext {
@@ -182,7 +215,10 @@ function buildOpContext(deps: OpContextDeps): OperationContext {
     },
     dryRun: false,
     remote: true,                // match MCP trust boundary for auto-link skip
-    sourceId: 'default',         // v0.34 D4: required; subagent tools default to host source
+    auth: deps.auth,
+    takesHoldersAllowList: deps.auth ? ['world'] : undefined,
+    sourceId: deps.sourceId ?? deps.auth?.sourceId ?? 'default',
+    executive: deps.executive,
     jobId: deps.jobId,
     subagentId: deps.subagentId,
     viaSubagent: true,           // FAIL-CLOSED: put_page etc. enforce namespace
@@ -201,9 +237,10 @@ function buildOpContext(deps: OpContextDeps): OperationContext {
  * subagentId + engine handle, so it's not shareable across jobs.
  */
 export function buildBrainTools(opts: BuildBrainToolsOpts): ToolDef[] {
-  const filter = opts.allowedNames ?? BRAIN_TOOL_ALLOWLIST;
+  const requestedNames = opts.allowedNames ? normalizeAllowedNames(opts.allowedNames) : undefined;
+  const filter = requestedNames ?? BRAIN_TOOL_ALLOWLIST;
   const picked: Operation[] = operations.filter(
-    op => BRAIN_TOOL_ALLOWLIST.has(op.name) && filter.has(op.name),
+    op => isAllowedRegistryOp(op.name, requestedNames, Boolean(opts.auth)) && filter.has(op.name),
   );
 
   return picked.map<ToolDef>(op => {
@@ -232,9 +269,17 @@ export function buildBrainTools(opts: BuildBrainToolsOpts): ToolDef[] {
           signal: ctx.signal,
           brainId: opts.brainId,
           allowedSlugPrefixes: opts.allowedSlugPrefixes,
+          auth: opts.auth,
+          executive: opts.executive,
+          sourceId: opts.sourceId,
         });
         const params = (input && typeof input === 'object') ? input as Record<string, unknown> : {};
-        return op.handler(opCtx, params);
+        enforceSourceScopeOverride(op.name, params, opCtx);
+        enforceAuthenticatedBotToolPolicy(op.name, params, opCtx);
+        const result = await op.handler(opCtx, params);
+        return op.name === 'takes_list'
+          ? filterTakeRowsByAuthorizedSource(result, opCtx)
+          : result;
       },
     };
   });
@@ -244,7 +289,9 @@ export function buildBrainTools(opts: BuildBrainToolsOpts): ToolDef[] {
  * Apply the caller's `allowed_tools` subset to a registry. Unknown tool
  * names throw a clear error at load time (NOT silently ignored) so
  * subagent defs with a typo don't ship to prod wondering why a tool
- * never fires.
+ * never fires. The only exception is the explicit Ebrain D2 future-op
+ * list above; those names are policy allow-list entries that are expected
+ * to materialize after Stage G1.
  */
 export function filterAllowedTools(registry: ToolDef[], allowedToolNames: string[]): ToolDef[] {
   const indexByName = new Map(registry.map(t => [t.name, t]));
@@ -256,6 +303,7 @@ export function filterAllowedTools(registry: ToolDef[], allowedToolNames: string
   const picked: ToolDef[] = [];
   for (const requested of allowedToolNames) {
     const match = indexByName.get(requested) ?? indexByShort.get(requested);
+    if (!match && isOptionalFutureEbrainToolNotRegistered(requested)) continue;
     if (!match) {
       throw new Error(
         `subagent allowed_tools references unknown tool "${requested}". ` +
@@ -269,10 +317,112 @@ export function filterAllowedTools(registry: ToolDef[], allowedToolNames: string
   return picked;
 }
 
+function normalizeAllowedNames(names: ReadonlySet<string>): ReadonlySet<string> {
+  return new Set([...names].map(name => name.replace(/^brain_/, '')));
+}
+
+function isAllowedRegistryOp(
+  opName: string,
+  requestedNames: ReadonlySet<string> | undefined,
+  hasAuth: boolean,
+): boolean {
+  return BRAIN_TOOL_ALLOWLIST.has(opName)
+    || (
+      requestedNames?.has(opName) === true
+      && (
+        EXPLICIT_EXTRA_BRAIN_TOOLS.has(opName)
+        || OPTIONAL_FUTURE_EBRAIN_TOOLS.has(opName)
+      )
+      && hasAuth
+    );
+}
+
+function enforceSourceScopeOverride(
+  opName: string,
+  params: Record<string, unknown>,
+  ctx: OperationContext,
+): void {
+  if (!ctx.auth) return;
+  const sourceIdParam = params.source_id;
+  if (typeof sourceIdParam !== 'string') return;
+  const allowedSources = ctx.auth.allowedSources && ctx.auth.allowedSources.length > 0
+    ? ctx.auth.allowedSources
+    : [ctx.sourceId];
+  if (sourceIdParam === '__all__' || !allowedSources.includes(sourceIdParam)) {
+    throw new OperationError(
+      'permission_denied',
+      `subagent tool ${opName} cannot override source_id outside its authorized source scope`,
+    );
+  }
+}
+
+function enforceAuthenticatedBotToolPolicy(
+  opName: string,
+  params: Record<string, unknown>,
+  ctx: OperationContext,
+): void {
+  if (!ctx.auth) return;
+  if (opName === 'get_page' && params.fuzzy === true) {
+    throw new OperationError(
+      'permission_denied',
+      'authenticated subagent get_page cannot use fuzzy slug resolution; provide an exact slug',
+    );
+  }
+}
+
+async function filterTakeRowsByAuthorizedSource(result: unknown, ctx: OperationContext): Promise<unknown> {
+  if (!ctx.auth || !Array.isArray(result)) return result;
+  const allowedSources = getAuthorizedSourceIds(ctx);
+  if (allowedSources.length === 0) return [];
+
+  const filtered: unknown[] = [];
+  for (const row of result) {
+    const take = row && typeof row === 'object' && !Array.isArray(row)
+      ? row as { page_id?: unknown }
+      : {};
+    const pageId = Number(take.page_id);
+    if (!Number.isInteger(pageId)) continue;
+    if (await pageBelongsToAuthorizedSource(ctx, pageId, allowedSources)) filtered.push(row);
+  }
+  return filtered;
+}
+
+function getAuthorizedSourceIds(ctx: OperationContext): string[] {
+  const fromAuth = ctx.auth?.allowedSources?.filter(source => source && source !== '__all__') ?? [];
+  if (fromAuth.length > 0) return fromAuth;
+  return ctx.sourceId && ctx.sourceId !== '__all__' ? [ctx.sourceId] : [];
+}
+
+async function pageBelongsToAuthorizedSource(
+  ctx: OperationContext,
+  pageId: number,
+  allowedSources: readonly string[],
+): Promise<boolean> {
+  for (const sourceId of allowedSources) {
+    const rows = await ctx.engine.executeRaw<{ id: number }>(
+      'SELECT id FROM pages WHERE id = $1 AND source_id = $2 LIMIT 1',
+      [pageId, sourceId],
+    );
+    if (rows.length > 0) return true;
+  }
+  return false;
+}
+
+function isOptionalFutureEbrainToolNotRegistered(toolName: string): boolean {
+  const shortName = toolName.replace(/^brain_/, '');
+  return OPTIONAL_FUTURE_EBRAIN_TOOLS.has(shortName)
+    && !operations.some(op => op.name === shortName);
+}
+
 /** Exported for unit tests (stable surface). */
 export const __testing = {
   sanitizeToolName,
   paramsToInputSchema,
   namespacedPutPageSchema,
+  buildOpContext,
+  enforceSourceScopeOverride,
+  enforceAuthenticatedBotToolPolicy,
+  filterTakeRowsByAuthorizedSource,
+  isOptionalFutureEbrainToolNotRegistered,
   ANTHROPIC_NAME_RE,
 };

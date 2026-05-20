@@ -1,3 +1,3 @@
-/** Placeholder for DingTalk webhook handling. */
-/** Implementation belongs to Stage C2. */
-export {};
+import { createWebhookHandler } from '../bot/router.ts';
+
+export const dingtalkHandler = createWebhookHandler('dingtalk');

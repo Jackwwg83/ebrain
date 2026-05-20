@@ -1512,3 +1512,106 @@ STAGE-SUMMARY.md
 
 - No live DingTalk callback traffic was exercised in Round 2; validation used synthetic encrypted DingTalk-shaped callback bodies and the repo's official-signature helper.
 - M-D3 still needs real dev callback traffic after deploy before claiming production/runtime completion.
+
+# Stage D2: IM Bot Router + Webhook Dispatch
+
+## Status
+
+- Stage: D2
+- Branch: `ebrain-mvp`
+- Baseline: `cb18c74d8290f9a8a579d2813ff42232bd726e86`
+- Scope: shared IM bot router, webhook endpoint registration, subagent dispatch trust boundary, push/reply MVP helpers, and focused D2 tests
+- Result: PASS locally. IM webhooks now verify, decode, resolve executive actor, enqueue protected `subagent` work with remote trust context and BOT_ALLOWED_OPS allowlist, then return HTTP 200 without waiting for LLM/tool execution.
+
+## Implementation
+
+- `src/ebrain/bot/router.ts`: implemented shared provider-neutral router, exact six-name `BOT_ALLOWED_OPS`, executive lookup by IM user id, friendly 200 rejection for unknown executive, and fire-and-forget protected subagent enqueue.
+- `src/ebrain/bot/intent-classifier.ts`, `src/ebrain/bot/reply-formatter.ts`, `src/ebrain/bot/push-orchestrator.ts`: implemented MVP intent classification, vendor markdown reply shapes, and push routing with `disabled_at` opt-out checks.
+- `src/ebrain/webhook/server.ts` plus thin provider handlers: registered Feishu, DingTalk, WeCom, Tencent Meeting, and reconcile POST endpoints; DingTalk app loading is implemented, other app loaders warn and leave endpoints registered for later provider stages.
+- `src/commands/serve-http.ts`: appended a Postgres-only lazy registration block using `await import('../ebrain/webhook/server.ts')`; registration failure logs a warning and does not block core serve startup.
+- `src/core/minions/types.ts`, `src/core/minions/tools/brain-allowlist.ts`, `src/core/minions/handlers/subagent.ts`: threaded optional Ebrain bot `auth`, `executive`, and `sourceId` into the real subagent tool context so the router allowlist and executive actor are enforced at the actual runtime boundary.
+- Tests added/updated: `tests/ebrain/bot/router.test.ts`, `tests/ebrain/webhook/server.test.ts`, `tests/ebrain/bot/push-orchestrator.test.ts`, `tests/ebrain/bot/reply-formatter.test.ts`, `test/brain-allowlist.test.ts`, and `test/subagent-handler.test.ts`.
+
+## Trust Boundary Evidence
+
+- I-10 remote trust path: `src/ebrain/bot/router.ts:69` defines subagent job data with `allowed_tools`, `auth`, `executive`, `sourceId`, and `ctx`; `src/ebrain/bot/router.ts:75` and `src/ebrain/bot/router.ts:208` keep `ctx.remote: true`.
+- No local-only bypass: acceptance grep found `ctx.remote.*true = 1` and `ctx.remote.*false = 0` in `src/ebrain/bot/router.ts`.
+- Strict op allowlist: `src/ebrain/bot/router.ts:11` defines exactly `search`, `query`, `get_page`, `takes_list`, `list_executives`, and `get_executive_context`; acceptance grep found `takes_list = 1` and `list_takes = 0`.
+- Snake-case subagent contract: `src/ebrain/bot/router.ts:71` and `src/ebrain/bot/router.ts:204` use `allowed_tools`; acceptance grep found `allowed_tools = 2` and `allowedTools = 0`.
+- Protected submit: `src/ebrain/bot/router.ts:264` uses `submitBotSubagentJob()`, which passes `{ allowProtectedSubmit: true }`; acceptance grep found `allowProtectedSubmit.*true = 2`.
+- Router does not dispatch directly: acceptance grep found `dispatchToolCall = 0` in `src/ebrain/bot/router.ts`; dispatch remains inside the subagent handler/tool runtime.
+- Unknown executive privacy: `src/ebrain/bot/router.ts:161` sends the friendly access-denied reply and returns `res.status(200)` instead of 403, preventing user-enumeration via response code.
+- 3-second webhook SLA: `src/ebrain/bot/router.ts:168` starts subagent enqueue as a detached promise and `src/ebrain/bot/router.ts:172` returns 200 immediately; `tests/ebrain/bot/router.test.ts` covers a never-resolving `submitJob` returning within the local SLA guard.
+- Enterprise source confinement: `src/core/minions/tools/brain-allowlist.ts:217` keeps subagent op contexts remote; `src/core/minions/tools/brain-allowlist.ts:218`/`:220` thread bot auth/source; `src/core/minions/tools/brain-allowlist.ts:340` rejects authenticated `source_id='__all__'` or out-of-scope overrides.
+- Takes privacy: `src/core/minions/tools/brain-allowlist.ts:70` keeps `takes_list` out of the default registry and explicit-only; `src/core/minions/tools/brain-allowlist.ts:219` sets `takesHoldersAllowList: ['world']` for authenticated bot calls; `src/core/minions/tools/brain-allowlist.ts:373` filters returned take rows back to pages in the authorized enterprise source.
+- Exact-page reads: `src/core/minions/tools/brain-allowlist.ts:359` rejects authenticated `get_page` with `fuzzy: true`, avoiding cross-source slug candidate enumeration.
+- Reconcile endpoint guard: `src/ebrain/webhook/server.ts:50` requires `EBRAIN_WEBHOOK_RECONCILE_TOKEN` before running the reconcile worker, so the public maintenance endpoint does not trigger DB work anonymously.
+- `serve-http.ts` append-only evidence: `git diff cb18c74d..HEAD -- src/commands/serve-http.ts | grep -cE "^-[^-]"` returned `0`; lazy import evidence `grep -n "await import('../ebrain/webhook/server.ts')" src/commands/serve-http.ts | wc -l` returned `1`.
+
+## Architect Decision
+
+- Spec gap: the 8-round design validation covered `src/mcp/dispatch.ts` and its executive hook, but missed that the subagent handler builds its own `OperationContext` via `src/core/minions/tools/brain-allowlist.ts`. Without this fix, D2 could enqueue a bot subagent with `auth.executiveId`, yet the actual brain tool calls would still run with the old hardcoded subagent context and bypass the executive actor/source boundary.
+- Authorized scope: `src/core/minions/types.ts` added only optional `SubagentHandlerData.auth`, `SubagentHandlerData.executive`, and `SubagentHandlerData.sourceId` fields with JSDoc marking them as Ebrain bot optional fields. `src/core/minions/tools/brain-allowlist.ts` now prefers those optional values and falls back to existing hardcoded defaults when absent.
+- Required glue exception: `src/core/minions/handlers/subagent.ts` passes the optional fields and `allowed_tools` from `SubagentHandlerData` into `buildBrainTools()`. This is outside the literal two-file authorization list, but it is the minimal runtime glue needed for the authorized `brain-allowlist.ts` fallback path to receive the data. Existing gbrain callers that leave these fields undefined keep the old behavior.
+- Append-only evidence: `git diff -- src/core/minions/types.ts | grep -cE "^-[^-]"` returned `0`; all new fields are optional and existing required fields/signatures were not removed.
+- Risk: upstream gbrain changes to `SubagentHandlerData` or subagent tool context construction may conflict with this fork-specific extension. Mitigation: optional fields plus fallback behavior minimize the conflict surface and preserve current gbrain subagent runtime tests.
+- Follow-up: for the v0.32.0 Ebrain release, consider a PR back to gbrain to make subagent job `auth`/`executive`/`sourceId` threading a first-class core capability instead of an Ebrain-specific fork delta.
+
+## Reviewer Fixwave
+
+- Independent reviewer found H-001 risk: making `takes_list` bot-allowed without `takesHoldersAllowList` and source filtering could expose takes outside the enterprise source. Fix: keep `takes_list` out of default `BRAIN_TOOL_ALLOWLIST`, allow it only when an authenticated trusted submitter explicitly requests it, set `takesHoldersAllowList: ['world']`, and post-filter take rows to pages whose `source_id` is authorized.
+- Independent reviewer found H-002 risk: bot `query` could try `source_id='__all__'` and escape enterprise source scope. Fix: authenticated subagent tool calls reject `__all__` and any source outside `auth.allowedSources` / `ctx.sourceId` before invoking the operation.
+- Independent reviewer found M-001 risk: authenticated `get_page` with `fuzzy: true` could enumerate cross-source slug candidates. Fix: authenticated subagent `get_page` rejects fuzzy resolution and requires exact slug reads.
+- Independent reviewer found M-002 risk: `/webhook/reconcile` was a public trigger. Fix: the route now requires `EBRAIN_WEBHOOK_RECONCILE_TOKEN` through `x-ebrain-reconcile-token` or `Authorization: Bearer ...` before scheduling reconcile work.
+- Independent reviewer noted `src/core/minions/handlers/subagent.ts` as a medium-scope exception; this summary documents why it is required runtime glue and records the regression suite evidence below.
+
+## Verification Evidence
+
+| Check | Result | Evidence |
+|---|---|---|
+| `git status` start | PASS | Worktree was clean at baseline `cb18c74d`; branch `ebrain-mvp` |
+| `bun run typecheck` | PASS | `tsc --noEmit` exited 0 |
+| D2 focused tests | PASS | `bun test tests/ebrain/bot/ tests/ebrain/webhook/` -> 16 pass, 0 fail, 51 expect() calls |
+| Focused reviewer regressions | PASS | `bun test test/brain-allowlist.test.ts tests/ebrain/webhook/server.test.ts tests/ebrain/bot/router.test.ts test/subagent-handler.test.ts` -> 51 pass, 0 fail, 151 expect() calls |
+| Subagent/runtime regression | PASS | `bun test test/subagent*.test.ts test/minions*.test.ts test/agent-cli*.test.ts` -> 317 pass, 0 fail, 821 expect() calls |
+| Core gbrain regression | PASS | `bun test test/operations*.test.ts test/parity.test.ts test/cli.test.ts` -> 74 pass, 0 fail, 1037 expect() calls |
+| DingTalk C2 regression | PASS | `bun test tests/ebrain/apps/dingtalk/` -> 28 pass, 0 fail, 92 expect() calls |
+| Full verify | PASS | `bun run verify` -> privacy, proposal PII, test names, JSONB, source-id projection, progress, isolation, WASM, admin build, admin scope, CLI executable, system-of-record, eval glossary, synthetic corpus privacy, and typecheck all passed |
+| I-10 greps | PASS | `ctx.remote.*true = 1`, `ctx.remote.*false = 0`, `dispatchToolCall = 0` in `src/ebrain/bot/router.ts` |
+| BOT_ALLOWED_OPS greps | PASS | `takes_list = 1`, `list_takes = 0`; tests also verify all 6 names against `operations.ts` or spec |
+| subagent data greps | PASS | `allowed_tools = 2`, `allowedTools = 0`, `allowProtectedSubmit.*true = 2` in `src/ebrain/bot/router.ts` |
+| append-only greps | PASS | `serve-http.ts` deletion count `0`; `types.ts` deletion count `0`; lazy webhook import count `1` |
+
+## Files Changed
+
+```text
+src/commands/serve-http.ts
+src/core/minions/handlers/subagent.ts
+src/core/minions/tools/brain-allowlist.ts
+src/core/minions/types.ts
+src/ebrain/bot/index.ts
+src/ebrain/bot/intent-classifier.ts
+src/ebrain/bot/push-orchestrator.ts
+src/ebrain/bot/reply-formatter.ts
+src/ebrain/bot/router.ts
+src/ebrain/webhook/dingtalk-handler.ts
+src/ebrain/webhook/feishu-handler.ts
+src/ebrain/webhook/index.ts
+src/ebrain/webhook/reconcile-worker.ts
+src/ebrain/webhook/server.ts
+src/ebrain/webhook/tencent-meeting-handler.ts
+src/ebrain/webhook/wecom-handler.ts
+test/brain-allowlist.test.ts
+test/subagent-handler.test.ts
+tests/ebrain/bot/push-orchestrator.test.ts
+tests/ebrain/bot/reply-formatter.test.ts
+tests/ebrain/bot/router.test.ts
+tests/ebrain/webhook/server.test.ts
+STAGE-SUMMARY.md
+```
+
+## Runtime Notes
+
+- No live DingTalk/Feishu/WeCom/Tencent Meeting callback traffic was exercised in this D2 local run; validation used local synthetic webhook fixtures and unit/integration tests.
+- The realistic end-to-end path proven locally is: decoded IM event -> executive lookup -> protected subagent job data -> real subagent handler -> brain tool context with enterprise source/auth. `test/subagent-handler.test.ts` confirms a real subagent handler tool call sees enterprise source content and does not surface default-source content.
+- M-D3 remains the first live webhook runtime gate after PM configures the dev callback URL and credentials; do not claim production traffic completion from D2 alone.

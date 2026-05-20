@@ -46,12 +46,14 @@ describe('BRAIN_TOOL_ALLOWLIST', () => {
 
   test('contains the v0.15 read-only 10 + put_page + v0.29 salience pair', () => {
     // v0.29 added get_recent_salience + find_anomalies (read-only).
+    // Ebrain D2 takes_list stays explicit-only, not in the default registry.
     // get_recent_transcripts is deliberately excluded — subagent calls always
     // have ctx.remote=true, and the v0.29 trust gate rejects remote callers.
     expect(BRAIN_TOOL_ALLOWLIST.size).toBe(13);
     expect(BRAIN_TOOL_ALLOWLIST.has('query')).toBe(true);
     expect(BRAIN_TOOL_ALLOWLIST.has('search')).toBe(true);
     expect(BRAIN_TOOL_ALLOWLIST.has('get_page')).toBe(true);
+    expect(BRAIN_TOOL_ALLOWLIST.has('takes_list')).toBe(false);
     expect(BRAIN_TOOL_ALLOWLIST.has('list_pages')).toBe(true);
     expect(BRAIN_TOOL_ALLOWLIST.has('put_page')).toBe(true);
     expect(BRAIN_TOOL_ALLOWLIST.has('get_recent_salience')).toBe(true);
@@ -73,6 +75,38 @@ describe('buildBrainTools', () => {
     const opNames = new Set(operations.map(o => o.name));
     const expected = [...BRAIN_TOOL_ALLOWLIST].filter(n => opNames.has(n)).length;
     expect(tools.length).toBe(expected);
+  });
+
+  test('explicit allowedNames can add Ebrain D2 takes_list without widening the default registry', () => {
+    const defaultTools = buildBrainTools({ subagentId: 42, engine, config });
+    expect(defaultTools.some(t => t.name === 'brain_takes_list')).toBe(false);
+
+    const tools = buildBrainTools({
+      subagentId: 42,
+      engine,
+      config,
+      allowedNames: new Set(['search', 'takes_list']),
+      auth: {
+        token: 'internal-bot:dingtalk:evt-1',
+        clientId: 'bot:dingtalk',
+        scopes: ['read'],
+        sourceId: 'enterprise',
+        allowedSources: ['enterprise'],
+      },
+    });
+
+    expect(tools.map(t => t.name).sort()).toEqual(['brain_search', 'brain_takes_list']);
+  });
+
+  test('explicit takes_list is unavailable without authenticated Ebrain bot context', () => {
+    const tools = buildBrainTools({
+      subagentId: 42,
+      engine,
+      config,
+      allowedNames: new Set(['takes_list']),
+    });
+
+    expect(tools.some(t => t.name === 'brain_takes_list')).toBe(false);
   });
 
   test('tool names are brain_<op> and match Anthropic constraint', () => {
@@ -138,6 +172,162 @@ describe('buildBrainTools', () => {
       ),
     ).rejects.toBeInstanceOf(OperationError);
   });
+
+  test('buildOpContext threads optional Ebrain auth, executive, and sourceId', () => {
+    const executive = {
+      executiveId: 'exec-1',
+      email: 'exec1@example.test',
+      displayName: 'Exec One',
+      role: 'CEO',
+      soulPath: 'executives/exec-1/SOUL.md',
+      agentPersonaPath: 'executives/exec-1/AGENT_PERSONA.md',
+      userPath: 'executives/exec-1/USER.md',
+      preferencesPath: 'executives/exec-1/preferences.yml',
+      personalSkillsRoot: 'executives/exec-1/personal-skills',
+      subagentName: 'ceo-agent',
+      pushPreferences: {},
+    };
+    const auth = {
+      token: 'internal-bot:dingtalk:evt-1',
+      clientId: 'bot:dingtalk',
+      scopes: ['read'],
+      sourceId: 'enterprise',
+      allowedSources: ['enterprise'],
+      executiveId: 'exec-1',
+    };
+
+    const opCtx = __testing.buildOpContext({
+      engine,
+      config,
+      subagentId: 42,
+      jobId: 100,
+      auth,
+      executive,
+      sourceId: 'enterprise',
+    });
+
+    expect(opCtx.remote).toBe(true);
+    expect(opCtx.auth).toBe(auth);
+    expect(opCtx.executive).toBe(executive);
+    expect(opCtx.sourceId).toBe('enterprise');
+    expect(opCtx.takesHoldersAllowList).toEqual(['world']);
+  });
+
+  test('execute() on explicit takes_list uses remote-safe holder allow-list', async () => {
+    let seenAllowList: string[] | undefined;
+    const fakeEngine = {
+      async listTakes(opts: { takesHoldersAllowList?: string[] }) {
+        seenAllowList = opts.takesHoldersAllowList;
+        return [];
+      },
+    };
+    const tools = buildBrainTools({
+      subagentId: 1,
+      engine: fakeEngine as any,
+      config,
+      allowedNames: new Set(['takes_list']),
+      auth: {
+        token: 'internal-bot:dingtalk:evt-1',
+        clientId: 'bot:dingtalk',
+        scopes: ['read'],
+        sourceId: 'enterprise',
+        allowedSources: ['enterprise'],
+        executiveId: 'exec-1',
+      },
+      sourceId: 'enterprise',
+    });
+    const takesList = tools.find(t => t.name === 'brain_takes_list');
+
+    await takesList!.execute({}, { engine: fakeEngine as any, jobId: 1, remote: true });
+
+    expect(seenAllowList).toEqual(['world']);
+  });
+
+  test('execute() on explicit takes_list filters rows to authenticated source scope', async () => {
+    const fakeEngine = {
+      async listTakes() {
+        return [
+          { id: 1, page_id: 1, page_slug: 'wiki/default', holder: 'world' },
+          { id: 2, page_id: 2, page_slug: 'wiki/enterprise', holder: 'world' },
+        ];
+      },
+      async executeRaw(_sql: string, params?: unknown[]) {
+        return params?.[0] === 2 && params?.[1] === 'enterprise' ? [{ id: 2 }] : [];
+      },
+    };
+    const tools = buildBrainTools({
+      subagentId: 1,
+      engine: fakeEngine as any,
+      config,
+      allowedNames: new Set(['takes_list']),
+      auth: {
+        token: 'internal-bot:dingtalk:evt-1',
+        clientId: 'bot:dingtalk',
+        scopes: ['read'],
+        sourceId: 'enterprise',
+        allowedSources: ['enterprise'],
+        executiveId: 'exec-1',
+      },
+      sourceId: 'enterprise',
+    });
+    const takesList = tools.find(t => t.name === 'brain_takes_list');
+
+    const result = await takesList!.execute({}, { engine: fakeEngine as any, jobId: 1, remote: true });
+
+    expect(result).toEqual([{ id: 2, page_id: 2, page_slug: 'wiki/enterprise', holder: 'world' }]);
+  });
+
+  test('execute() rejects authenticated fuzzy get_page to avoid cross-source slug enumeration', async () => {
+    const tools = buildBrainTools({
+      subagentId: 1,
+      engine,
+      config,
+      allowedNames: new Set(['get_page']),
+      auth: {
+        token: 'internal-bot:dingtalk:evt-1',
+        clientId: 'bot:dingtalk',
+        scopes: ['read'],
+        sourceId: 'enterprise',
+        allowedSources: ['enterprise'],
+        executiveId: 'exec-1',
+      },
+      sourceId: 'enterprise',
+    });
+    const getPage = tools.find(t => t.name === 'brain_get_page');
+
+    await expect(
+      getPage!.execute(
+        { slug: 'ambiguous', fuzzy: true },
+        { engine, jobId: 1, remote: true },
+      ),
+    ).rejects.toThrow(/fuzzy slug resolution/);
+  });
+
+  test('execute() rejects source_id override outside authenticated bot source scope', async () => {
+    const tools = buildBrainTools({
+      subagentId: 1,
+      engine,
+      config,
+      allowedNames: new Set(['query']),
+      auth: {
+        token: 'internal-bot:dingtalk:evt-1',
+        clientId: 'bot:dingtalk',
+        scopes: ['read'],
+        sourceId: 'enterprise',
+        allowedSources: ['enterprise'],
+        executiveId: 'exec-1',
+      },
+      sourceId: 'enterprise',
+    });
+    const query = tools.find(t => t.name === 'brain_query');
+
+    await expect(
+      query!.execute(
+        { query: 'anything', source_id: '__all__' },
+        { engine, jobId: 1, remote: true },
+      ),
+    ).rejects.toThrow(/cannot override source_id/);
+  });
 });
 
 describe('filterAllowedTools', () => {
@@ -156,6 +346,45 @@ describe('filterAllowedTools', () => {
   test('rejects unknown tool names (no silent ignore)', () => {
     const tools = buildBrainTools({ subagentId: 1, engine, config });
     expect(() => filterAllowedTools(tools, ['brain_typo_nope'])).toThrow(/unknown tool/);
+  });
+
+  test('skips explicitly future Ebrain tools but still rejects unknown typos', () => {
+    const tools = buildBrainTools({
+      subagentId: 1,
+      engine,
+      config,
+      allowedNames: new Set([
+        'search',
+        'query',
+        'get_page',
+        'takes_list',
+        'list_executives',
+        'get_executive_context',
+      ]),
+      auth: {
+        token: 'internal-bot:dingtalk:evt-1',
+        clientId: 'bot:dingtalk',
+        scopes: ['read'],
+        sourceId: 'enterprise',
+        allowedSources: ['enterprise'],
+      },
+    });
+    const filtered = filterAllowedTools(tools, [
+      'search',
+      'query',
+      'get_page',
+      'takes_list',
+      'list_executives',
+      'get_executive_context',
+    ]);
+
+    expect(filtered.map(t => t.name)).toEqual([
+      'brain_search',
+      'brain_query',
+      'brain_get_page',
+      'brain_takes_list',
+    ]);
+    expect(() => filterAllowedTools(tools, ['ghost_tool'])).toThrow(/unknown tool/);
   });
 
   test('deduplicates when both prefixed + unprefixed given', () => {

@@ -1350,6 +1350,27 @@ export async function runServeHttp(engine: BrainEngine, options: ServeHttpOption
     }
   });
 
+  // Ebrain D2: IM webhook endpoints. Lazy import keeps core serve-http startup
+  // free of enterprise adapter side effects unless a Postgres deployment opts in.
+  if (config.engine === 'postgres') {
+    try {
+      const {
+        loadEnabledEnterpriseApps,
+        registerWebhookEndpoints,
+      } = await import('../ebrain/webhook/server.ts');
+      const logger = {
+        warn: (msg: string) => console.error(`[WARN] ${msg}`),
+        error: (msg: string) => console.error(`[ERROR] ${msg}`),
+      };
+      const apps = await loadEnabledEnterpriseApps(engine, logger);
+      registerWebhookEndpoints(app, { engine, apps, logger });
+    } catch (e) {
+      console.error(
+        `[WARN] Ebrain webhook endpoint registration skipped: ${e instanceof Error ? e.message : String(e)}`,
+      );
+    }
+  }
+
   // ---------------------------------------------------------------------------
   // Start server
   // ---------------------------------------------------------------------------

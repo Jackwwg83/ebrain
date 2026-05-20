@@ -42,6 +42,8 @@ beforeEach(async () => {
   await engine.executeRaw('DELETE FROM subagent_messages');
   await engine.executeRaw('DELETE FROM subagent_rate_leases');
   await engine.executeRaw('DELETE FROM minion_jobs');
+  await engine.executeRaw('DELETE FROM pages');
+  await engine.executeRaw(`DELETE FROM sources WHERE id <> 'default'`);
 });
 
 // ── FakeMessagesClient ──────────────────────────────────────
@@ -469,5 +471,74 @@ describe('makeSubagentHandler default client construction', () => {
     expect(calls.length).toBe(1);
     expect(result.stop_reason).toBe('end_turn');
     expect(result.result).toBe('ok');
+  });
+
+  test('Ebrain bot job data scopes built-in brain tools to enterprise source', async () => {
+    await engine.executeRaw(
+      `INSERT INTO sources (id, name, config)
+       VALUES ('enterprise', 'enterprise', '{"federated": true}'::jsonb)
+       ON CONFLICT (id) DO NOTHING`,
+    );
+    await engine.putPage('wiki/default/bot-scope', {
+      type: 'note',
+      title: 'Default Bot Scope',
+      compiled_truth: 'd2scopeprobe default should not surface',
+    }, { sourceId: 'default' });
+    await engine.upsertChunks('wiki/default/bot-scope', [{
+      chunk_index: 0,
+      chunk_text: 'd2scopeprobe default should not surface',
+      chunk_source: 'compiled_truth',
+    }], { sourceId: 'default' });
+    await engine.putPage('wiki/enterprise/bot-scope', {
+      type: 'note',
+      title: 'Enterprise Bot Scope',
+      compiled_truth: 'd2scopeprobe enterprise should surface',
+    }, { sourceId: 'enterprise' });
+    await engine.upsertChunks('wiki/enterprise/bot-scope', [{
+      chunk_index: 0,
+      chunk_text: 'd2scopeprobe enterprise should surface',
+      chunk_source: 'compiled_truth',
+    }], { sourceId: 'enterprise' });
+
+    const client = new FakeMessagesClient([
+      {
+        content: [{
+          type: 'tool_use',
+          id: 'tu_scope',
+          name: 'brain_search',
+          input: { query: 'd2scopeprobe', limit: 10 },
+        }] as any,
+        stop_reason: 'tool_use' as any,
+      },
+      { content: [{ type: 'text', text: 'done' }] as any, stop_reason: 'end_turn' },
+    ]);
+    const handler = makeSubagentHandler({ engine, client });
+    const ctx = await makeCtx({
+      prompt: 'search enterprise scope',
+      allowed_tools: ['search'],
+      auth: {
+        token: 'internal-bot:dingtalk:evt-scope',
+        clientId: 'bot:dingtalk',
+        scopes: ['read'],
+        sourceId: 'enterprise',
+        allowedSources: ['enterprise'],
+        executiveId: 'exec-1',
+      },
+      sourceId: 'enterprise',
+    });
+
+    const result = await handler(ctx);
+
+    expect(result.stop_reason).toBe('end_turn');
+    const rows = await engine.executeRaw<{ output: unknown }>(
+      `SELECT output FROM subagent_tool_executions WHERE job_id = $1 AND tool_name = 'brain_search'`,
+      [ctx.id],
+    );
+    const output = typeof rows[0]!.output === 'string'
+      ? JSON.parse(rows[0]!.output as string)
+      : rows[0]!.output;
+    const slugs = (output as Array<{ slug: string }>).map(row => row.slug);
+    expect(slugs).toContain('wiki/enterprise/bot-scope');
+    expect(slugs).not.toContain('wiki/default/bot-scope');
   });
 });

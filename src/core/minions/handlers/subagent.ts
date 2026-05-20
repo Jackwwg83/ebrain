@@ -180,6 +180,10 @@ export function makeSubagentHandler(deps: SubagentDeps) {
       config,
       brainId: data.brain_id,
       allowedSlugPrefixes: data.allowed_slug_prefixes,
+      allowedNames: data.allowed_tools ? new Set(data.allowed_tools) : undefined,
+      auth: data.auth,
+      executive: data.executive,
+      sourceId: data.sourceId,
     });
     const toolDefs = data.allowed_tools && data.allowed_tools.length > 0
       ? filterAllowedTools(registry, data.allowed_tools)

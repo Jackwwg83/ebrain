@@ -417,6 +417,21 @@ export interface SubagentHandlerData {
    * time, not silently ignored. Empty array = no tools.
    */
   allowed_tools?: string[];
+  /**
+   * Optional; set by Ebrain bot router to thread executive actor + enterprise source.
+   * gbrain core callers leave undefined, falls back to hardcoded defaults.
+   */
+  auth?: import('../operations.ts').AuthInfo;
+  /**
+   * Optional; set by Ebrain bot router to thread executive actor + enterprise source.
+   * gbrain core callers leave undefined, falls back to hardcoded defaults.
+   */
+  executive?: import('../types.ts').ExecutiveProfile;
+  /**
+   * Optional; set by Ebrain bot router to thread executive actor + enterprise source.
+   * gbrain core callers leave undefined, falls back to hardcoded defaults.
+   */
+  sourceId?: string;
   /** System prompt override. When omitted, the handler builds one. */
   system?: string;
   /** Template variables for subagent_def. Arbitrary JSON-serializable. */
