@@ -911,3 +911,83 @@ helm template ebrain-dev deploy/dev/helm --values deploy/dev/helm/values.dev.yam
 helm template ebrain-dev deploy/dev/helm --values deploy/dev/helm/values.dev.yaml --set 'networkPolicy.httpsEgressCidrs[0]=not-a-cidr' 2>&1 | grep -E "fail|FAIL|Error"
 # Error: execution error at (ebrain-dev/templates/networkpolicy.yaml:8:4): networkPolicy.httpsEgressCidrs[0] is invalid: "not-a-cidr". Must be a non-empty IPv4 CIDR like 10.0.0.0/8.
 ```
+
+## A5 Fixwave Round 4
+
+Reviewer round-3 blocking item R3-M-001 fixed by adding semantic IPv4 CIDR
+validation for `networkPolicy.httpsEgressCidrs`: each value is split into IP and
+mask, every octet must be `0..255`, and mask must be `0..32`. Fail-fast errors
+include the entry index, actual CIDR value, and the failing part.
+
+Reviewer 5 gates:
+
+```text
+helm template ebrain-dev deploy/dev/helm --values deploy/dev/helm/values.dev.yaml --set 'networkPolicy.httpsEgressCidrs[0]=10.0.0.0/99' 2>&1 | tail -3
+# Error: execution error at (ebrain-dev/templates/networkpolicy.yaml:15:4): networkPolicy.httpsEgressCidrs[0] = "10.0.0.0/99" has invalid mask /99. Mask must be 0..32.
+#
+# Use --debug flag to render out invalid YAML
+
+helm template ebrain-dev deploy/dev/helm --values deploy/dev/helm/values.dev.yaml --set 'networkPolicy.httpsEgressCidrs[0]=10.0.0.0/33' 2>&1 | tail -3
+# Error: execution error at (ebrain-dev/templates/networkpolicy.yaml:15:4): networkPolicy.httpsEgressCidrs[0] = "10.0.0.0/33" has invalid mask /33. Mask must be 0..32.
+#
+# Use --debug flag to render out invalid YAML
+
+helm template ebrain-dev deploy/dev/helm --values deploy/dev/helm/values.dev.yaml --set 'networkPolicy.httpsEgressCidrs[0]=999.0.0.0/8' 2>&1 | tail -3
+# Error: execution error at (ebrain-dev/templates/networkpolicy.yaml:20:4): networkPolicy.httpsEgressCidrs[0] = "999.0.0.0/8" has invalid octet 0 (= 999). Each octet must be 0..255.
+#
+# Use --debug flag to render out invalid YAML
+
+helm template ebrain-dev deploy/dev/helm --values deploy/dev/helm/values.dev.yaml --set 'networkPolicy.httpsEgressCidrs[0]=0.0.0.0/0' > /tmp/a5-r4-zero.yaml; echo "exit=$?"
+# exit=0
+
+helm template ebrain-dev deploy/dev/helm --values deploy/dev/helm/values.dev.yaml --set 'networkPolicy.httpsEgressCidrs[0]=10.0.0.1/32' > /tmp/a5-r4-32.yaml; echo "exit=$?"
+# exit=0
+```
+
+Boundary cases:
+
+```text
+helm template ebrain-dev deploy/dev/helm --values deploy/dev/helm/values.dev.yaml --set 'networkPolicy.httpsEgressCidrs[0]=10.0.0.0/32' > /dev/null; echo "/32 exit=$?"
+# /32 exit=0
+
+helm template ebrain-dev deploy/dev/helm --values deploy/dev/helm/values.dev.yaml --set 'networkPolicy.httpsEgressCidrs[0]=10.0.0.0/0' > /dev/null; echo "/0 exit=$?"
+# /0 exit=0
+
+helm template ebrain-dev deploy/dev/helm --values deploy/dev/helm/values.dev.yaml --set 'networkPolicy.httpsEgressCidrs[0]=255.255.255.255/32' > /dev/null; echo "255 exit=$?"
+# 255 exit=0
+
+helm template ebrain-dev deploy/dev/helm --values deploy/dev/helm/values.dev.yaml --set 'networkPolicy.httpsEgressCidrs[0]=10.0.0.0/0' > /dev/null; echo "/0-2 exit=$?"
+# /0-2 exit=0
+
+helm template ebrain-dev deploy/dev/helm --values deploy/dev/helm/values.dev.yaml --set 'networkPolicy.httpsEgressCidrs[0]=10.0.0.0/256' 2>&1 | tail -3
+# Error: execution error at (ebrain-dev/templates/networkpolicy.yaml:15:4): networkPolicy.httpsEgressCidrs[0] = "10.0.0.0/256" has invalid mask /256. Mask must be 0..32.
+#
+# Use --debug flag to render out invalid YAML
+```
+
+Regression cases:
+
+```text
+helm template ebrain-dev deploy/dev/helm --values deploy/dev/helm/values.dev.yaml 2>&1 | tail -3
+# Error: execution error at (ebrain-dev/templates/networkpolicy.yaml:3:4): networkPolicy.httpsEgressCidrs is empty. Set company-approved SaaS egress CIDRs in values.dev.yaml or --set before deploy.
+#
+# Use --debug flag to render out invalid YAML
+
+helm template ebrain-dev deploy/dev/helm --values deploy/dev/helm/values.dev.yaml --set 'networkPolicy.httpsEgressCidrs={}' 2>&1 | tail -3
+# Error: execution error at (ebrain-dev/templates/networkpolicy.yaml:8:4): networkPolicy.httpsEgressCidrs[0] is invalid: "". Must be a non-empty IPv4 CIDR like 10.0.0.0/8.
+#
+# Use --debug flag to render out invalid YAML
+
+helm template ebrain-dev deploy/dev/helm --values deploy/dev/helm/values.dev.yaml --set 'networkPolicy.httpsEgressCidrs[0]=10.0.0.0/8' > /dev/null; echo "valid /8 exit=$?"
+# valid /8 exit=0
+```
+
+Rendered artifact spot checks:
+
+```text
+grep -n 'cidr: 0.0.0.0/0' /tmp/a5-r4-zero.yaml
+# 47:            cidr: 0.0.0.0/0
+
+grep -n 'cidr: 10.0.0.1/32' /tmp/a5-r4-32.yaml
+# 47:            cidr: 10.0.0.1/32
+```

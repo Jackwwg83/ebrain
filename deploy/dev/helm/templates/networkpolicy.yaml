@@ -2,10 +2,23 @@
 {{- if eq (len .Values.networkPolicy.httpsEgressCidrs) 0 }}
 {{- fail "networkPolicy.httpsEgressCidrs is empty. Set company-approved SaaS egress CIDRs in values.dev.yaml or --set before deploy." }}
 {{- end }}
-{{- range $i, $cidr := .Values.networkPolicy.httpsEgressCidrs }}
-{{- $trimmedCidr := (toString $cidr | trim) }}
-{{- if not (regexMatch "^[0-9]{1,3}\\.[0-9]{1,3}\\.[0-9]{1,3}\\.[0-9]{1,3}/[0-9]{1,2}$" $trimmedCidr) }}
+{{- range $i, $rawCidr := .Values.networkPolicy.httpsEgressCidrs }}
+{{- $cidr := (toString $rawCidr | trim) }}
+{{- if not (regexMatch "^[0-9]{1,3}\\.[0-9]{1,3}\\.[0-9]{1,3}\\.[0-9]{1,3}/[0-9]{1,3}$" $cidr) }}
 {{- fail (printf "networkPolicy.httpsEgressCidrs[%d] is invalid: %q. Must be a non-empty IPv4 CIDR like 10.0.0.0/8." $i $cidr) }}
+{{- end }}
+{{- $parts := splitList "/" $cidr }}
+{{- $ip := index $parts 0 }}
+{{- $maskStr := index $parts 1 }}
+{{- $mask := int (atoi $maskStr) }}
+{{- if or (lt $mask 0) (gt $mask 32) }}
+{{- fail (printf "networkPolicy.httpsEgressCidrs[%d] = %q has invalid mask /%s. Mask must be 0..32." $i $cidr $maskStr) }}
+{{- end }}
+{{- range $octIdx, $octStr := splitList "." $ip }}
+{{- $oct := int (atoi $octStr) }}
+{{- if or (lt $oct 0) (gt $oct 255) }}
+{{- fail (printf "networkPolicy.httpsEgressCidrs[%d] = %q has invalid octet %d (= %s). Each octet must be 0..255." $i $cidr $octIdx $octStr) }}
+{{- end }}
 {{- end }}
 {{- end }}
 apiVersion: networking.k8s.io/v1
