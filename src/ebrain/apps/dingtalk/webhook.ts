@@ -51,34 +51,40 @@ export class DingtalkWebhookHandler implements WebhookHandler {
     if ((this.replayKeys.get(replayKey) ?? 0) > nowMs) return false;
 
     const encryptedBody = typeof parsedBody.encrypt === 'string' ? parsedBody.encrypt : null;
-    let signedBodyContent: string;
+    let verified = false;
     if (encryptedBody) {
+      const expected = createDingtalkEncryptedWebhookSignature({
+        token: this.signingSecret,
+        timestamp,
+        nonce,
+        encrypt: encryptedBody,
+      });
+      if (!safeCompare(decodedSign, expected)) return false;
       if (!this.aesKey) return false;
       try {
-        const decryptedPlaintext = decryptDingtalkCallbackPayload(encryptedBody, this.aesKey, this.corpId);
-        signedBodyContent = decryptedPlaintext;
+        // DingTalk signs the encrypted callback field; decrypt only after the official signature passes.
+        decryptDingtalkCallbackPayload(encryptedBody, this.aesKey, this.corpId);
       } catch {
         return false;
       }
+      verified = true;
     } else {
       if (!this.allowPlaintextWebhook) return false;
-      signedBodyContent = rawBody;
+      const expected = createDingtalkWebhookSignature({
+        timestamp,
+        nonce,
+        secret: this.signingSecret,
+        bodyContent: rawBody,
+      });
+      const expectedHex = createDingtalkWebhookSignature({
+        timestamp,
+        nonce,
+        secret: this.signingSecret,
+        bodyContent: rawBody,
+        encoding: 'hex',
+      });
+      verified = safeCompare(decodedSign, expected) || safeCompare(decodedSign, expectedHex);
     }
-
-    const expected = createDingtalkWebhookSignature({
-      timestamp,
-      nonce,
-      secret: this.signingSecret,
-      bodyContent: signedBodyContent,
-    });
-    const expectedHex = createDingtalkWebhookSignature({
-      timestamp,
-      nonce,
-      secret: this.signingSecret,
-      bodyContent: signedBodyContent,
-      encoding: 'hex',
-    });
-    const verified = safeCompare(decodedSign, expected) || safeCompare(decodedSign, expectedHex);
     if (verified) this.replayKeys.set(replayKey, nowMs + DINGTALK_WEBHOOK_REPLAY_WINDOW_MS);
     return verified;
   }

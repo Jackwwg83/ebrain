@@ -1468,3 +1468,47 @@ STAGE-SUMMARY.md
 
 - No live DingTalk callback traffic was exercised in this fixwave; validation used local encrypted webhook fixtures and synthetic DingTalk-shaped payloads.
 - Public webhook routing and M-D3 dev environment traffic remain the next runtime gate after this blocker fix is deployed.
+
+# Stage C2 Fixwave Round 2: Official Encrypted msg_signature
+
+## Status
+
+- Stage: C2 Fixwave Round 2
+- Branch: `ebrain-mvp`
+- Baseline: `bd0b76c2` (`Stage C2 Fixwave: webhook HMAC body bind + nonce replay test + corpId warn (H-001+M-001+L-001)`)
+- Reviewer report: `/Users/jackwu/Projects/EBRAIN_STAGE_C2_REVIEW_ROUND2.md`
+- Scope: R2-H-001 encrypted `msg_signature` compatibility regression
+- Result: PASS locally; encrypted DingTalk callbacks again verify with official sorted SHA1 over `encrypt`, while plaintext fallback keeps body-bound HMAC and remains opt-in.
+
+## Fixes
+
+- R2-H-001: `DingtalkWebhookHandler.verify()` now treats encrypted callback bodies as the production path and verifies `msg_signature` with `createDingtalkEncryptedWebhookSignature({ token, timestamp, nonce, encrypt })`.
+- R2-H-001: encrypted verification uses DingTalk's official sorted SHA1 algorithm (`sort([token, timestamp, nonce, encrypt])`, concatenate, SHA1 hex) before decrypting the payload.
+- H-001 preserved: plaintext fallback still requires `allowPlaintextWebhook=true` and compares body-bound HMAC-SHA256 over `${timestamp}\n${nonce}\n${rawBody}`.
+- M-001 preserved: replay cache remains keyed by `${timestamp}:${nonce}` and is only populated after a successful verify.
+- L-001 preserved: token manager missing-`corpId` warning remains covered by the DingTalk focused test suite.
+
+## Verification Evidence
+
+| Check | Result | Evidence |
+|---|---|---|
+| Focused webhook regression | PASS | `bun test tests/ebrain/apps/dingtalk/webhook.test.ts` -> 10 pass, 0 fail, 13 expect() calls |
+| DingTalk focused suite | PASS | `bun test tests/ebrain/apps/dingtalk/` -> 28 pass, 0 fail, 92 expect() calls |
+| `bun run typecheck` | PASS | `tsc --noEmit` exited 0 |
+| Full verify | PASS | `bun run verify` -> privacy, proposal PII, test names, JSONB, source-id projection, progress, isolation, WASM, admin build, admin scope, CLI executable, system-of-record, eval glossary, synthetic corpus privacy, and typecheck all passed |
+| R2-H-001 regression | PASS | encrypted request signed with `createDingtalkEncryptedWebhookSignature()` verifies `true`; wrong `msg_signature` and ciphertext tamper verify `false` |
+| H-001 plaintext body bind | PASS | plaintext default rejection and plaintext tamper-with-same-sign tests still return `false` |
+| M-001 replay | PASS | same request verifies `true` once and `false` on second use of the nonce |
+
+## Files Changed
+
+```text
+src/ebrain/apps/dingtalk/webhook.ts
+tests/ebrain/apps/dingtalk/webhook.test.ts
+STAGE-SUMMARY.md
+```
+
+## Runtime Notes
+
+- No live DingTalk callback traffic was exercised in Round 2; validation used synthetic encrypted DingTalk-shaped callback bodies and the repo's official-signature helper.
+- M-D3 still needs real dev callback traffic after deploy before claiming production/runtime completion.

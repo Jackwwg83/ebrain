@@ -1,9 +1,11 @@
+import crypto from 'node:crypto';
 import { setDefaultTimeout, describe, expect, test } from 'bun:test';
 
 setDefaultTimeout(20_000);
 import {
   DINGTALK_WEBHOOK_REPLAY_WINDOW_MS,
   DingtalkWebhookHandler,
+  createDingtalkEncryptedWebhookSignature,
   createDingtalkWebhookSignature,
   encryptDingtalkCallbackPayload,
 } from '../../../../src/ebrain/apps/dingtalk/index.ts';
@@ -11,15 +13,15 @@ import {
 const now = () => new Date('2026-05-20T02:00:00.000Z');
 const timestamp = String(now().getTime());
 const nonce = 'nonce-123';
-const secret = 'webhook-secret';
+const webhookToken = crypto.randomBytes(16).toString('hex');
 const corpId = 'corp-test';
-const aesKey = Buffer.alloc(32, 4).toString('base64').replace(/=+$/, '');
+const aesKey = crypto.randomBytes(32).toString('base64').replace(/=+$/, '');
 
 function handler(): DingtalkWebhookHandler {
   return new DingtalkWebhookHandler({
     appKey: 'ding-test-key',
     encryptedAppSecret: 'encrypted:not-used',
-    token: secret,
+    token: webhookToken,
     now,
   });
 }
@@ -28,7 +30,7 @@ function plaintextHandler(): DingtalkWebhookHandler {
   return new DingtalkWebhookHandler({
     appKey: 'ding-test-key',
     encryptedAppSecret: 'encrypted:not-used',
-    token: secret,
+    token: webhookToken,
     allowPlaintextWebhook: true,
     now,
   });
@@ -39,7 +41,7 @@ function encryptedHandler(): DingtalkWebhookHandler {
     appKey: 'ding-test-key',
     encryptedAppSecret: 'encrypted:not-used',
     corpId,
-    token: secret,
+    token: webhookToken,
     aesKey,
     now,
   });
@@ -49,7 +51,7 @@ function buildEncryptedWebhookRequest(args?: {
   payload?: Record<string, unknown>;
   timestamp?: string;
   nonce?: string;
-  signBodyContent?: string;
+  sign?: string;
 }) {
   const payload = args?.payload ?? {
     EventId: 'evt-encrypted-1',
@@ -61,29 +63,49 @@ function buildEncryptedWebhookRequest(args?: {
   const encrypted = encryptDingtalkCallbackPayload(bodyContent, aesKey, corpId);
   const requestTimestamp = args?.timestamp ?? timestamp;
   const requestNonce = args?.nonce ?? nonce;
-  const sign = createDingtalkWebhookSignature({
+  const sign = createDingtalkEncryptedWebhookSignature({
+    token: webhookToken,
     timestamp: requestTimestamp,
     nonce: requestNonce,
-    secret,
-    bodyContent: args?.signBodyContent ?? bodyContent,
-    encoding: 'hex',
+    encrypt: encrypted,
   });
   return {
     bodyContent,
+    encrypted,
     req: {
-      headers: { timestamp: requestTimestamp, nonce: requestNonce, msg_signature: sign },
+      headers: { timestamp: requestTimestamp, nonce: requestNonce, msg_signature: args?.sign ?? sign },
       rawBody: JSON.stringify({ encrypt: encrypted }),
     },
   };
 }
 
 describe('DingtalkWebhookHandler', () => {
-  test('verify accepts encrypted body-bound HMAC', async () => {
+  test('encrypted signature helper matches DingTalk sorted SHA1 algorithm', () => {
+    const args = {
+      token: 'z-token-fixture',
+      timestamp: '1000',
+      nonce: 'a-nonce-fixture',
+      encrypt: 'm-encrypt-fixture',
+    };
+    const sortedExpected = crypto
+      .createHash('sha1')
+      .update([args.token, args.timestamp, args.nonce, args.encrypt].sort().join(''))
+      .digest('hex');
+    const unsorted = crypto
+      .createHash('sha1')
+      .update(`${args.token}${args.timestamp}${args.nonce}${args.encrypt}`)
+      .digest('hex');
+
+    expect(createDingtalkEncryptedWebhookSignature(args)).toBe(sortedExpected);
+    expect(createDingtalkEncryptedWebhookSignature(args)).not.toBe(unsorted);
+  });
+
+  test('encrypted webhook verifies with official DingTalk msg_signature', async () => {
     const { req } = buildEncryptedWebhookRequest();
     await expect(encryptedHandler().verify(req)).resolves.toBe(true);
   });
 
-  test('verify rejects invalid sign', async () => {
+  test('encrypted webhook rejects when official msg_signature is wrong', async () => {
     const { req } = buildEncryptedWebhookRequest();
     await expect(encryptedHandler().verify({
       ...req,
@@ -107,7 +129,7 @@ describe('DingtalkWebhookHandler', () => {
 
   test('verify rejects plaintext payloads by default', async () => {
     const rawBody = JSON.stringify({ EventType: 'chat_update_title' });
-    const sign = createDingtalkWebhookSignature({ timestamp, nonce, secret, bodyContent: rawBody, encoding: 'hex' });
+    const sign = createDingtalkWebhookSignature({ timestamp, nonce, secret: webhookToken, bodyContent: rawBody, encoding: 'hex' });
 
     await expect(handler().verify({
       headers: { timestamp, nonce, sign },
@@ -121,7 +143,7 @@ describe('DingtalkWebhookHandler', () => {
     const sign = createDingtalkWebhookSignature({
       timestamp,
       nonce,
-      secret,
+      secret: webhookToken,
       bodyContent: originalBody,
       encoding: 'hex',
     });
@@ -132,7 +154,7 @@ describe('DingtalkWebhookHandler', () => {
     })).resolves.toBe(false);
   });
 
-  test('verify rejects encrypted body when decrypted plaintext is tampered', async () => {
+  test('encrypted webhook rejects ciphertext tamper with original official msg_signature', async () => {
     const originalPayload = {
       EventId: 'evt-encrypted-1',
       EventType: 'bpms_instance_change',
@@ -140,13 +162,15 @@ describe('DingtalkWebhookHandler', () => {
       CorpId: corpId,
     };
     const tamperedPayload = { ...originalPayload, EventType: 'tampered_event' };
-    const originalBodyContent = JSON.stringify(originalPayload);
     const { req } = buildEncryptedWebhookRequest({
-      payload: tamperedPayload,
-      signBodyContent: originalBodyContent,
+      payload: originalPayload,
     });
+    const tamperedEncrypt = encryptDingtalkCallbackPayload(JSON.stringify(tamperedPayload), aesKey, corpId);
 
-    await expect(encryptedHandler().verify(req)).resolves.toBe(false);
+    await expect(encryptedHandler().verify({
+      ...req,
+      rawBody: JSON.stringify({ encrypt: tamperedEncrypt }),
+    })).resolves.toBe(false);
   });
 
   test('verify and decode support encrypted DingTalk callback bodies', async () => {
