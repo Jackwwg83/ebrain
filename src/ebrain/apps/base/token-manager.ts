@@ -4,6 +4,14 @@
  */
 export type TokenKind = 'tenant_access' | 'user_access' | 'app_access' | 'refresh';
 
+export interface TokenRefreshResult {
+  accessToken: string;
+  expiresAt: string | Date;
+  refreshToken?: string;
+  scopes?: string[];
+  metadata?: Record<string, unknown>;
+}
+
 export interface TokenManager {
   /**
    * Return a usable token for the given kind.
@@ -17,7 +25,7 @@ export interface TokenManager {
    * Refresh the selected token scope. The same scope convention as `getToken`
    * applies: tenant id, user id, or `app`.
    */
-  refresh(kind: TokenKind, scope?: string): Promise<void>;
+  refresh(kind: TokenKind, scope?: string): Promise<TokenRefreshResult>;
 
   /**
    * Report whether the selected token scope should be refreshed before use.

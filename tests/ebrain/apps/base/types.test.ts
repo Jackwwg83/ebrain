@@ -31,7 +31,12 @@ const tokenManager: TokenManager = {
   async getToken(kind: TokenKind, scope?: string) {
     return `${kind}:${scope ?? 'default'}`;
   },
-  async refresh() {},
+  async refresh(kind: TokenKind, scope?: string) {
+    return {
+      accessToken: `refreshed:${kind}:${scope ?? 'default'}`,
+      expiresAt: new Date('2026-05-20T01:00:00.000Z'),
+    };
+  },
   async isExpired() {
     return false;
   },
@@ -96,7 +101,12 @@ test('TokenManager interface allows minimal dummy implementation', async () => {
     async getToken() {
       return 'tok';
     },
-    async refresh() {},
+    async refresh() {
+      return {
+        accessToken: 'tok-refreshed',
+        expiresAt: new Date('2026-05-20T01:00:00.000Z'),
+      };
+    },
     async isExpired() {
       return false;
     },
@@ -168,6 +178,78 @@ test('EnterpriseApp interface composes all sub-capabilities with optional webhoo
   expect(dummyApp.botAdapter).toBeDefined();
   expect(meetingApp.webhookHandler).toBeUndefined();
   expect(meetingApp.botAdapter).toBeUndefined();
+});
+
+test('5 vendors satisfy EnterpriseApp matrix', () => {
+  const feishu: EnterpriseApp = {
+    appId: 'feishu-prod',
+    appType: 'feishu',
+    displayName: '飞书 Prod',
+    tokenManager,
+    rateLimiter,
+    webhookHandler,
+    botAdapter,
+    subConnectors: [],
+    enabled: true,
+    botEnabled: true,
+    pushEnabled: true,
+    consecutiveErrors: 0,
+  };
+  expect(feishu.appType).toBe('feishu');
+
+  const dingtalk: EnterpriseApp = {
+    ...feishu,
+    appId: 'dingtalk-prod',
+    appType: 'dingtalk',
+    displayName: '钉钉',
+  };
+  const wecom: EnterpriseApp = {
+    ...feishu,
+    appId: 'wecom-prod',
+    appType: 'wecom',
+    displayName: '企微',
+  };
+
+  const tencentMeeting: EnterpriseApp = {
+    appId: 'tm-prod',
+    appType: 'tencent-meeting',
+    displayName: '腾讯会议',
+    tokenManager,
+    rateLimiter,
+    subConnectors: [],
+    enabled: true,
+    botEnabled: false,
+    pushEnabled: false,
+    consecutiveErrors: 0,
+  };
+  expect(tencentMeeting.webhookHandler).toBeUndefined();
+  expect(tencentMeeting.botAdapter).toBeUndefined();
+
+  const shenxiao: EnterpriseApp = {
+    ...tencentMeeting,
+    appId: 'crm-shenxiao-prod',
+    appType: 'crm-shenxiao',
+    displayName: '销售易',
+    webhookHandler,
+  };
+
+  const fenxiang: EnterpriseApp = {
+    ...shenxiao,
+    appId: 'crm-fenxiang-prod',
+    appType: 'crm-fenxiang',
+    displayName: '纷享销客',
+  };
+
+  const allApps: EnterpriseApp[] = [feishu, dingtalk, wecom, tencentMeeting, shenxiao, fenxiang];
+  expect(allApps.map((app) => app.appType)).toEqual([
+    'feishu',
+    'dingtalk',
+    'wecom',
+    'tencent-meeting',
+    'crm-shenxiao',
+    'crm-fenxiang',
+  ]);
+  expect(allApps.length).toBe(6);
 });
 
 test('EnterpriseConnector interface requires app and transforms to EnterpriseIngestObject', async () => {

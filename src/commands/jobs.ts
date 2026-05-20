@@ -4,9 +4,10 @@
  */
 
 import type { BrainEngine } from '../core/engine.ts';
+import type { OperationContext } from '../core/operations.ts';
 import { MinionQueue } from '../core/minions/queue.ts';
 import { MinionWorker } from '../core/minions/worker.ts';
-import type { MinionJob, MinionJobStatus } from '../core/minions/types.ts';
+import type { MinionHandler, MinionJob, MinionJobStatus } from '../core/minions/types.ts';
 import { loadConfig, isThinClient } from '../core/config.ts';
 import { callRemoteTool, unpackToolResult } from '../core/mcp-client.ts';
 
@@ -1138,6 +1139,26 @@ export async function registerBuiltinHandlers(worker: MinionWorker, engine: Brai
       report,
     };
   });
+
+  const ebrainTokenRefreshHandler: MinionHandler = async (job) => {
+    const { tokenRefreshWorkerHandler } = await import('../ebrain/jobs/token-refresh-worker.ts');
+    const ctx: OperationContext = {
+      engine,
+      config: { engine: engine.kind },
+      logger: {
+        info: (msg) => process.stderr.write(`[ebrain-token-refresh] ${msg}\n`),
+        warn: (msg) => process.stderr.write(`[ebrain-token-refresh] WARN ${msg}\n`),
+        error: (msg) => process.stderr.write(`[ebrain-token-refresh] ERROR ${msg}\n`),
+      },
+      dryRun: false,
+      remote: false,
+      sourceId: 'default',
+    } as OperationContext;
+    return tokenRefreshWorkerHandler(ctx, job);
+  };
+  worker.register('ebrain-token-refresh', ebrainTokenRefreshHandler);
+  // Compatibility alias for the existing dev runbook manual enqueue command.
+  worker.register('token-refresh', ebrainTokenRefreshHandler);
 
   // Shell handler is always registered. Runtime env guard lives inside the
   // handler so claimed jobs emit a clear rejection log on workers missing

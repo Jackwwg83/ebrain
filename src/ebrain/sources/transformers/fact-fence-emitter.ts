@@ -1,3 +1,13 @@
-/** Placeholder for emitting gbrain Facts fences from structured data. */
-/** Implementation will use canonical gbrain facts helpers after A1. */
-export {};
+import {
+  FACTS_FENCE_BEGIN,
+  FACTS_FENCE_END,
+  parseFactsFence,
+  renderFactsTable,
+} from '../../../core/facts-fence.ts';
+import type { ParsedFact } from '../../../core/facts-fence.ts';
+
+export { FACTS_FENCE_BEGIN, FACTS_FENCE_END, parseFactsFence };
+
+export function emitFactFence(facts: ParsedFact[]): string {
+  return renderFactsTable(facts);
+}

@@ -1081,3 +1081,188 @@ tests/ebrain/apps/base/types.test.ts         | 321 +++++++++++++++++++++++++++
 - Root package dependencies: none.
 - Root lockfile changes: none.
 - `bun add` / `npm install` new dependency actions: none.
+
+---
+
+# Stage B2: ingest-common + Circuit Breaker + Token Refresh + B1 Follow-up
+
+## B1 Follow-up Resolved
+
+### B1-L-001: 5-vendor EnterpriseApp matrix test
+
+- Added committed coverage in `tests/ebrain/apps/base/types.test.ts` with `5 vendors satisfy EnterpriseApp matrix`.
+- The matrix instantiates all six MVP adapter app types: `feishu`, `dingtalk`, `wecom`, `tencent-meeting`, `crm-shenxiao`, and `crm-fenxiang`.
+- The test covers full IM-style apps with webhook + bot and meeting/CRM apps where webhook/bot are optional.
+
+Evidence:
+
+```text
+bun test tests/ebrain/apps/base/types.test.ts
+# 13 pass, 0 fail, 27 expect() calls
+```
+
+### B1-L-002: legacy weak base-contract names removed from `src/ebrain/types.ts`
+
+- Removed standalone legacy `EnterpriseApp`, `TokenKind`, and `EnterpriseConnector` definitions from `src/ebrain/types.ts`.
+- Re-exported the canonical B1 base contract instead:
+  `export type { EnterpriseApp, EnterpriseConnector, TokenKind, TokenManager } from './apps/base/index.ts';`
+- This preserves existing imports from `src/ebrain/types.ts` while routing those names to `src/ebrain/apps/base/*`.
+- Follow-up hardening also routes `EnterpriseIngestObject`, `EnterpriseIngestResult`, webhook, limiter, and bot adapter helper types from the same base barrel so future connector code cannot mix old A3-shaped contracts with the B1 contract.
+
+Evidence:
+
+```text
+grep -n "EnterpriseApp\|TokenKind\|EnterpriseConnector" src/ebrain/types.ts
+# 47:export type { EnterpriseApp, EnterpriseConnector, TokenKind, TokenManager } from './apps/base/index.ts';
+
+grep -nE "^export interface (EnterpriseApp|EnterpriseConnector)" src/ebrain/types.ts
+# empty
+
+grep -nE "^export type TokenKind" src/ebrain/types.ts
+# empty
+
+bun run typecheck
+# tsc --noEmit exited 0
+```
+
+## B2 Main Deliverable
+
+### ingest-common
+
+- Implemented `src/ebrain/sources/ingest-common.ts` with `upsertEnterpriseObject`, `stableHash`, and `toEnterpriseSlug`.
+- Uses `enterprise_ingest_objects` keyed by `(ingest_source_id, external_id)` and updates changed objects with `status = 'ingested'` without regressing status to `seen`.
+- Uses canonical `EBRAIN_SOURCE_ID` for enterprise page writes.
+- Encodes `enterprise_source_ref` with explicit `source=` and `external=` boundaries so source/external id pairs containing delimiters cannot collide under `pages_enterprise_object_uidx`.
+- Computes object `content_hash` from `title`, `bodyMarkdown`, `modifiedAt`, and `raw`.
+- Creates/updates the `enterprise` gbrain source page, enterprise provenance columns, and content chunks when the hash changes.
+- Skips page/chunk body rewrites when the hash is identical and the object is already `ingested`, but still refreshes page governance metadata/provenance/frontmatter for metadata-only changes.
+- Pre-existing `seen` rows still advance to `ingested`.
+- Stores v1 raw payload inline in `raw_ref` when it is under 100KB; OSS handoff remains a v1.1 hook.
+- Calls `resetCircuit` on successful changed and unchanged ingest paths so source health recovers after a real successful upsert.
+
+Runtime artifact evidence from tests:
+
+```text
+bun test tests/ebrain/sources/
+# 25 pass, 0 fail, 70 expect() calls across ingest-common, circuit-breaker, and fact-fence-emitter
+```
+
+The test inspects real PGLite rows for:
+
+- `enterprise_ingest_objects.status = 'ingested'` after first upsert.
+- `pages.source_id = 'enterprise'`, `enterprise_source_type`, `enterprise_source_ref`, `object_hash`, and `last_ingested_at` populated.
+- Identical-content metadata-only upsert returns `changed=false` while refreshing `pages.owner_org_unit`, `classification`, `provenance`, and `frontmatter`.
+- `content_chunks` rows created for non-empty body content.
+- 100 identical upserts leaving exactly 1 `enterprise_ingest_objects` row.
+- Lossy external id slug normalization preserving distinct page slugs via hash suffixes.
+- Delimiter-bearing `sourceId` / `externalId` values preserving distinct `enterprise_source_ref` values and avoiding page unique-index collisions.
+- Pre-existing `seen` rows advancing to `ingested` instead of being skipped.
+- Successful upsert clearing `consecutive_errors` and `circuit_open_until` on the source.
+- Body, `modifiedAt`, and `raw` changes producing a new `content_hash`.
+
+### circuit-breaker
+
+- Implemented `src/ebrain/sources/circuit-breaker.ts` with `markIngestError`, `checkCircuit`, and `resetCircuit`.
+- Threshold is hardcoded to 5 for v1.
+- Circuit opens for 30 minutes after the 5th consecutive ingest error.
+- Reset clears `consecutive_errors`, clears `circuit_open_until`, and stamps `last_success_at`.
+- No IM/push alerting was added; monitoring remains out of scope for J2.
+
+Evidence:
+
+```text
+bun test tests/ebrain/sources/
+# circuit-breaker.test.ts included in 25 pass, 0 fail, 70 expect() calls
+```
+
+### token-refresh-worker
+
+- Implemented `src/ebrain/jobs/token-refresh-worker.ts` with job name constant `ebrain-token-refresh` and `tokenRefreshWorkerHandler`.
+- Registered `ebrain-token-refresh` in the gbrain Minions built-in worker registry in `src/commands/jobs.ts`.
+- Registered `token-refresh` as a compatibility alias for the existing dev runbook manual enqueue path while keeping `ebrain-token-refresh` as the canonical job name.
+- Scans `enterprise_oauth_tokens` for tokens expiring within the next 30 minutes but not already expired, in batches of 50.
+- Loads the EnterpriseApp by `app_id`; gracefully skips apps whose concrete `tokenManager` is not implemented yet.
+- Handles per-token errors without blocking the rest of the batch.
+- Encrypts refreshed `access_token` and optional refreshed `refresh_token` values through `src/ebrain/secrets/crypto.ts` before writing them back.
+- Tightened `TokenManager.refresh` to return a persisted refresh payload (`accessToken`, `expiresAt`, optional `refreshToken`/`scopes`/`metadata`) so the worker can own encrypted DB persistence instead of silently treating a successful `void` refresh as skipped.
+
+Evidence:
+
+```text
+bun test tests/ebrain/jobs/token-refresh-worker.test.ts
+# 4 pass, 0 fail, 11 expect() calls
+```
+
+The test inspects real `enterprise_oauth_tokens` rows for skip behavior, encrypted refreshed access-token writes, unchanged far-future and already-expired tokens, and per-token error isolation.
+
+### fact-fence-emitter
+
+- Implemented `src/ebrain/sources/transformers/fact-fence-emitter.ts` using canonical gbrain facts helpers.
+- `emitFactFence(facts)` directly returns `renderFactsTable(facts)`.
+- No custom marker, YAML parser, or second wrapper was introduced.
+- Re-exported canonical `FACTS_FENCE_BEGIN`, `FACTS_FENCE_END`, and `parseFactsFence` from the emitter module for downstream callers/tests.
+
+Evidence:
+
+```text
+bun test tests/ebrain/sources/
+# fact-fence-emitter.test.ts included in 25 pass, 0 fail, 70 expect() calls
+```
+
+The test asserts:
+
+- Output includes the real imported gbrain begin/end markers.
+- `parseFactsFence(emitFactFence(facts)).facts` round-trips to the original facts.
+- Legacy 10-column and typed 14-column table branches render correctly.
+- Begin/end markers each appear exactly once, defending against nested marker output.
+
+## Files Changed
+
+```text
+src/commands/jobs.ts
+src/ebrain/apps/base/token-manager.ts
+src/ebrain/types.ts
+src/ebrain/sources/ingest-common.ts
+src/ebrain/sources/circuit-breaker.ts
+src/ebrain/sources/index.ts
+src/ebrain/sources/transformers/fact-fence-emitter.ts
+src/ebrain/sources/transformers/index.ts
+src/ebrain/jobs/token-refresh-worker.ts
+src/ebrain/jobs/index.ts
+tests/ebrain/apps/base/types.test.ts
+tests/ebrain/sources/ingest-common.test.ts
+tests/ebrain/sources/circuit-breaker.test.ts
+tests/ebrain/sources/fact-fence-emitter.test.ts
+tests/ebrain/jobs/token-refresh-worker.test.ts
+STAGE-SUMMARY.md
+```
+
+No `src/core/*` or `src/mcp/*` files were edited in B2.
+
+## Verification Evidence
+
+| Check | Result | Evidence |
+|---|---|---|
+| Resume state | PASS | branch `ebrain-mvp`; HEAD `e919261a`; expected unstaged B2 changes present after interrupted session |
+| B1-L-001 focused test | PASS | `bun test tests/ebrain/apps/base/types.test.ts` -> 13 pass, 0 fail |
+| B1-L-002 grep guard | PASS | only canonical re-export line remains; standalone `EnterpriseApp` / `EnterpriseConnector` / `TokenKind` definitions absent |
+| `bun run typecheck` | PASS | `tsc --noEmit` exited 0 |
+| B2 sources focused tests | PASS | `bun test tests/ebrain/sources/` -> 25 pass, 0 fail, 70 expect() calls; includes ingest-common, circuit-breaker, and fact-fence-emitter |
+| B2 token-refresh focused test | PASS | 4 pass, including encrypted DB write, already-expired skip, and per-token error isolation |
+| `bun test tests/ebrain/` | PASS | 70 pass, 0 fail, 175 expect() calls |
+| `bun test tests/ebrain/apps/base/` | PASS | 13 pass, 0 fail, 27 expect() calls |
+| Minions handler registration smoke | PASS | `bun test test/handlers.test.ts` -> 8 pass, 0 fail, 39 expect() calls; confirms `registerBuiltinHandlers` still boots after adding `ebrain-token-refresh` |
+| `bun test test/operations*.test.ts test/parity.test.ts` | PASS | 57 pass, 0 fail, 995 expect() calls |
+| `bun run verify` | PASS | privacy/proposal PII/test names/JSONB/source-id/progress/test-isolation/WASM/admin build/admin scope/CLI/system-of-record/eval glossary/synthetic corpus/typecheck all exited 0 |
+
+## Invariant Notes
+
+- I-05: `fact-fence-emitter` uses gbrain `renderFactsTable` directly; no private marker or double wrapper.
+- I-09: ingest-common, circuit-breaker, and token-refresh logic are vendor-neutral and contain no Feishu/DingTalk/WeCom/Tencent Meeting/CRM-specific branches.
+- I-12: B2 did not edit `src/core/*` or `src/mcp/*`.
+
+## New Dependencies
+
+- Root package dependencies: none.
+- Root lockfile changes: none.
+- `bun add` / `npm install` new dependency actions: none.
