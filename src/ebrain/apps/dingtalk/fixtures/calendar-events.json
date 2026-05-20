@@ -1,0 +1,135 @@
+[
+  {
+    "eventId": "dt-cal-01",
+    "summary": "Ebrain C2 sync 1",
+    "startTime": "2026-05-20T09:00:00.000Z",
+    "endTime": "2026-05-20T09:45:00.000Z",
+    "modifiedTime": "2026-05-19T12:01:00.000Z",
+    "organizerUserId": "user-01",
+    "attendeeUserIds": [
+      "user-02",
+      "user-03",
+      "user-05"
+    ],
+    "location": "online",
+    "description": "Stage C2 DingTalk validation meeting 1.",
+    "url": "https://dingtalk.example.com/calendar/dt-cal-01",
+    "raw": {
+      "fixture": true
+    }
+  },
+  {
+    "eventId": "dt-cal-02",
+    "summary": "Ebrain C2 sync 2",
+    "startTime": "2026-05-21T10:00:00.000Z",
+    "endTime": "2026-05-21T10:45:00.000Z",
+    "modifiedTime": "2026-05-20T12:02:00.000Z",
+    "organizerUserId": "user-01",
+    "attendeeUserIds": [
+      "user-02",
+      "user-03",
+      "user-06"
+    ],
+    "location": "online",
+    "description": "Stage C2 DingTalk validation meeting 2.",
+    "url": "https://dingtalk.example.com/calendar/dt-cal-02",
+    "raw": {
+      "fixture": true
+    }
+  },
+  {
+    "eventId": "dt-cal-03",
+    "summary": "Ebrain C2 sync 3",
+    "startTime": "2026-05-22T08:00:00.000Z",
+    "endTime": "2026-05-22T08:45:00.000Z",
+    "modifiedTime": "2026-05-21T12:03:00.000Z",
+    "organizerUserId": "user-01",
+    "attendeeUserIds": [
+      "user-02",
+      "user-03",
+      "user-07"
+    ],
+    "location": "online",
+    "description": "Stage C2 DingTalk validation meeting 3.",
+    "url": "https://dingtalk.example.com/calendar/dt-cal-03",
+    "raw": {
+      "fixture": true
+    }
+  },
+  {
+    "eventId": "dt-cal-04",
+    "summary": "Ebrain C2 sync 4",
+    "startTime": "2026-05-23T09:00:00.000Z",
+    "endTime": "2026-05-23T09:45:00.000Z",
+    "modifiedTime": "2026-05-22T12:04:00.000Z",
+    "organizerUserId": "user-01",
+    "attendeeUserIds": [
+      "user-02",
+      "user-03",
+      "user-08"
+    ],
+    "location": "online",
+    "description": "Stage C2 DingTalk validation meeting 4.",
+    "url": "https://dingtalk.example.com/calendar/dt-cal-04",
+    "raw": {
+      "fixture": true
+    }
+  },
+  {
+    "eventId": "dt-cal-05",
+    "summary": "Ebrain C2 sync 5",
+    "startTime": "2026-05-24T10:00:00.000Z",
+    "endTime": "2026-05-24T10:45:00.000Z",
+    "modifiedTime": "2026-05-23T12:05:00.000Z",
+    "organizerUserId": "user-01",
+    "attendeeUserIds": [
+      "user-02",
+      "user-03",
+      "user-04"
+    ],
+    "location": "online",
+    "description": "Stage C2 DingTalk validation meeting 5.",
+    "url": "https://dingtalk.example.com/calendar/dt-cal-05",
+    "raw": {
+      "fixture": true
+    }
+  },
+  {
+    "eventId": "dt-cal-06",
+    "summary": "Ebrain C2 sync 6",
+    "startTime": "2026-05-25T08:00:00.000Z",
+    "endTime": "2026-05-25T08:45:00.000Z",
+    "modifiedTime": "2026-05-24T12:06:00.000Z",
+    "organizerUserId": "user-01",
+    "attendeeUserIds": [
+      "user-02",
+      "user-03",
+      "user-05"
+    ],
+    "location": "online",
+    "description": "Stage C2 DingTalk validation meeting 6.",
+    "url": "https://dingtalk.example.com/calendar/dt-cal-06",
+    "raw": {
+      "fixture": true
+    }
+  },
+  {
+    "eventId": "dt-cal-07",
+    "summary": "Ebrain C2 sync 7",
+    "startTime": "2026-05-26T09:00:00.000Z",
+    "endTime": "2026-05-26T09:45:00.000Z",
+    "modifiedTime": "2026-05-25T12:07:00.000Z",
+    "organizerUserId": "user-01",
+    "attendeeUserIds": [
+      "user-02",
+      "user-03",
+      "user-06"
+    ],
+    "location": "online",
+    "description": "Stage C2 DingTalk validation meeting 7.",
+    "url": "https://dingtalk.example.com/calendar/dt-cal-07",
+    "raw": {
+      "fixture": true
+    }
+  }
+]

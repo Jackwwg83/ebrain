@@ -1266,3 +1266,158 @@ No `src/core/*` or `src/mcp/*` files were edited in B2.
 - Root package dependencies: none.
 - Root lockfile changes: none.
 - `bun add` / `npm install` new dependency actions: none.
+
+# Stage C2: DingTalk EnterpriseApp Complete Implementation
+
+## Status
+
+- Stage: C2 DingTalk EnterpriseApp
+- Branch: `ebrain-mvp`
+- Baseline: `869a02c1` (`Stage B2: ingest-common + Circuit Breaker + Token Refresh + B1 follow-up`)
+- Scope: DingTalk-only implementation; no gbrain core, Feishu, WeCom, Tencent Meeting, or CRM app edits
+- Result: PASS locally with reviewer round completed and no remaining findings
+
+## Implementation
+
+C2 adds a concrete DingTalk adapter under `src/ebrain/apps/dingtalk/`:
+
+- `DingtalkEnterpriseApp` composes `tokenManager`, `rateLimiter`, `webhookHandler`, `botAdapter`, and five sub-connectors.
+- `DingtalkTokenManager` uses the DingTalk v1.0 token endpoint `POST https://api.dingtalk.com/v1.0/oauth2/accessToken`, decrypts the configured app secret, encrypts stored access tokens, and throws `not yet implemented` for `app_access`, `user_access`, and `refresh`.
+- `DingtalkWebhookHandler` supports timestamp/nonce signature verification, `msg_signature` encrypted callback verification, 5 minute replay rejection, in-memory accepted-signature replay cache, DingTalk AES-CBC NoPadding with 32-byte PKCS7 padding, encrypted decode, and encrypted success response helper.
+- `DingtalkRateLimiter` uses `subagent_rate_leases`, per-tier internal keys, per-key transaction advisory locks, and endpoint-specific limits.
+- `DingtalkBotAdapter` supports in-memory mention registration, robot group replies, work notifications, app/tenant/user tier rate limiting, and `executives.push_preferences.dingtalk.disabled_at` opt-out precheck and persistence.
+- Sub-connectors implemented: `dingtalk-im`, `dingtalk-docs`, `dingtalk-drive`, `dingtalk-calendar`, `dingtalk-meeting`.
+
+## B2 Reuse
+
+All five sub-connectors route through B2 shared modules:
+
+```text
+grep -nE "upsertEnterpriseObject|markIngestError|checkCircuit" src/ebrain/apps/dingtalk/sub-connectors/*.ts | wc -l
+# 33
+```
+
+The connector path uses:
+
+- `upsertEnterpriseObject` for every produced `EnterpriseIngestObject`.
+- `checkCircuit` before work.
+- `markIngestError` for transform/upsert failures and vendor API load failures.
+- `resetCircuit` on successful batches.
+- `emitFactFence` for DingTalk approval workflow facts inside IM thread content.
+
+## Fixtures
+
+```text
+im-messages.json: 50
+docs-list.json: 8
+drive-files.json: 8
+calendar-events.json: 7
+meeting-list.json: 6
+```
+
+Fixture coverage includes IM thread aggregation, approval workflow metadata, docs markdown, drive metadata with `rawRef`, calendar attendees, meeting recording URLs, and transcript-present / transcript-missing cases.
+
+## Reviewer Evidence
+
+Reviewer was run because C2 is vendor-specific. The review found and drove three fixwaves:
+
+- Fixwave 1: encrypted callback compatibility, connector API-load circuit errors, app+tenant rate-limit acquisition, push opt-out precheck, IM webhook/incremental merge, and calendar fixture timestamp validity.
+- Fixwave 2: webhook secret-role hardening, token endpoint rate-limit acquisition, user-tier push rate limit, replyChainId thread stability, singleton-root IM merge, and required-field validation.
+- Fixwave 3: per-key DB advisory lock in rate limiter, candidate thread-key preservation during IM merge, all-message IM validation, and DingTalk envelope-shape errors instead of silent empty sync.
+- Final reviewer result: `no findings`.
+
+## Verification Evidence
+
+| Check | Result | Evidence |
+|---|---|---|
+| `bun run typecheck` | PASS | `tsc --noEmit` exit 0 |
+| DingTalk focused tests | PASS | `bun test tests/ebrain/apps/dingtalk/` -> 22 pass, 0 fail, 84 expect() calls |
+| Ebrain test suite | PASS | `bun test tests/ebrain/` -> 92 pass, 0 fail, 259 expect() calls |
+| Core regression tests | PASS | `bun test test/operations*.test.ts test/parity.test.ts` -> 57 pass, 0 fail, 995 expect() calls |
+| Full verify | PASS | `bun run verify` -> privacy, PII, JSONB, source-id, progress, isolation, WASM, admin build, CLI, system-of-record, eval glossary, corpus privacy, and typecheck all passed |
+| No old DingTalk OAPI | PASS | `grep -n 'oapi.dingtalk.com' src/ebrain/apps/dingtalk/*.ts` -> 0 |
+| No hardcoded app secret | PASS | `grep -nE "app_secret|appSecret.*=.*['\"]" src/ebrain/apps/dingtalk/*.ts | grep -v "encrypted" | grep -v "config" | grep -v "interface"` -> empty |
+| gbrain core append-only | PASS | `git diff 869a02c1..HEAD -- 'src/core/' 'src/mcp/' 'src/commands/' | grep -cE '^-[^-]'` -> 0 |
+| Other app dirs untouched | PASS | diff under `feishu`, `wecom`, `tencent-meeting`, `crm` -> 0 files |
+
+Focused DingTalk test stdout tail:
+
+```text
+22 pass
+0 fail
+84 expect() calls
+Ran 22 tests across 10 files. [14.59s]
+```
+
+Ebrain suite stdout tail:
+
+```text
+92 pass
+0 fail
+259 expect() calls
+Ran 92 tests across 20 files. [279.77s]
+```
+
+Core regression stdout tail:
+
+```text
+57 pass
+0 fail
+995 expect() calls
+Ran 57 tests across 5 files. [852.00ms]
+```
+
+## Diff Stat
+
+Captured before appending this C2 section to `STAGE-SUMMARY.md`:
+
+```text
+ enterprise-recipes/dingtalk-to-brain/recipe.md     |  66 +-
+ src/ebrain/apps/dingtalk/app.ts                    | 111 +++
+ src/ebrain/apps/dingtalk/bot-adapter.ts            | 193 +++++
+ .../apps/dingtalk/fixtures/calendar-events.json    | 135 ++++
+ src/ebrain/apps/dingtalk/fixtures/docs-list.json   | 106 +++
+ src/ebrain/apps/dingtalk/fixtures/drive-files.json | 114 +++
+ src/ebrain/apps/dingtalk/fixtures/im-messages.json | 786 +++++++++++++++++++++
+ src/ebrain/apps/dingtalk/fixtures/index.ts         |   5 +
+ .../apps/dingtalk/fixtures/meeting-list.json       | 122 ++++
+ src/ebrain/apps/dingtalk/index.ts                  |  10 +-
+ src/ebrain/apps/dingtalk/rate-limit.ts             | 154 ++++
+ .../apps/dingtalk/sub-connectors/calendar.ts       | 115 +++
+ src/ebrain/apps/dingtalk/sub-connectors/common.ts  | 173 +++++
+ src/ebrain/apps/dingtalk/sub-connectors/docs.ts    | 100 +++
+ src/ebrain/apps/dingtalk/sub-connectors/drive.ts   | 113 +++
+ src/ebrain/apps/dingtalk/sub-connectors/im.ts      | 220 ++++++
+ src/ebrain/apps/dingtalk/sub-connectors/index.ts   |   8 +-
+ src/ebrain/apps/dingtalk/sub-connectors/meeting.ts | 120 ++++
+ src/ebrain/apps/dingtalk/token-manager.ts          | 155 ++++
+ src/ebrain/apps/dingtalk/types.ts                  | 138 ++++
+ src/ebrain/apps/dingtalk/webhook.ts                | 249 +++++++
+ tests/ebrain/apps/dingtalk/app.test.ts             |  48 ++
+ tests/ebrain/apps/dingtalk/bot-adapter.test.ts     |  75 ++
+ tests/ebrain/apps/dingtalk/helpers.ts              |  80 +++
+ tests/ebrain/apps/dingtalk/rate-limit.test.ts      |  45 ++
+ .../apps/dingtalk/sub-connectors/calendar.test.ts  |  37 +
+ .../apps/dingtalk/sub-connectors/docs.test.ts      |  52 ++
+ .../apps/dingtalk/sub-connectors/drive.test.ts     |  37 +
+ .../ebrain/apps/dingtalk/sub-connectors/im.test.ts |  77 ++
+ .../apps/dingtalk/sub-connectors/meeting.test.ts   |  37 +
+ tests/ebrain/apps/dingtalk/token-manager.test.ts   | 104 +++
+ tests/ebrain/apps/dingtalk/webhook.test.ts         |  95 +++
+ 32 files changed, 3873 insertions(+), 7 deletions(-)
+```
+
+## Invariant Notes
+
+- I-04: DingTalk emitted objects set or default to `classification = 'L1'`.
+- I-09: DingTalk app, token manager, webhook handler, rate limiter, bot adapter, and sub-connectors implement/satisfy the B1 base interfaces.
+- I-10: Bot adapter only exposes mention registration/reply/push; D2 remains responsible for remote `OperationContext` dispatch and op allowlist.
+- I-12: C2 changed only DingTalk adapter paths, DingTalk recipe, DingTalk fixtures/tests, and this summary.
+- No `src/core/*`, `src/mcp/*`, or `src/commands/*` source edits were made.
+- No root dependency or lockfile changes; no `bun add` was run.
+
+## Residual Runtime Notes
+
+- C2 is unit/local integration complete. The public webhook route itself is still D2 scope; C2 provides handler capability and connector behavior.
+- Real company DingTalk traffic is expected at M-D3 after PM configures the dev callback URL and credentials.
+- Fixture data is synthetic but non-empty and vendor-shaped; no production/customer payloads are committed.

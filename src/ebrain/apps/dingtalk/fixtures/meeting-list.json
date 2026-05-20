@@ -1,0 +1,122 @@
+[
+  {
+    "meetingId": "dt-meet-01",
+    "title": "Ebrain DingTalk review 1",
+    "startTime": "2026-05-19T14:00:00.000Z",
+    "endTime": "2026-05-19T15:00:00.000Z",
+    "modifiedTime": "2026-05-19T15:10:00.000Z",
+    "hostUserId": "user-01",
+    "participantUserIds": [
+      "user-02",
+      "user-03",
+      "user-04"
+    ],
+    "recordingUrl": "https://dingtalk.example.com/meeting/recording/dt-meet-01",
+    "transcriptMarkdown": "## Transcript\n\n- Decision 1: keep DingTalk as MVP true integration.",
+    "transcriptUnavailableReason": null,
+    "url": "https://dingtalk.example.com/meeting/dt-meet-01",
+    "raw": {
+      "fixture": true
+    }
+  },
+  {
+    "meetingId": "dt-meet-02",
+    "title": "Ebrain DingTalk review 2",
+    "startTime": "2026-05-20T14:00:00.000Z",
+    "endTime": "2026-05-20T15:00:00.000Z",
+    "modifiedTime": "2026-05-20T15:10:00.000Z",
+    "hostUserId": "user-01",
+    "participantUserIds": [
+      "user-02",
+      "user-03",
+      "user-04"
+    ],
+    "recordingUrl": "https://dingtalk.example.com/meeting/recording/dt-meet-02",
+    "transcriptMarkdown": null,
+    "transcriptUnavailableReason": "transcript API did not return content for this meeting",
+    "url": "https://dingtalk.example.com/meeting/dt-meet-02",
+    "raw": {
+      "fixture": true
+    }
+  },
+  {
+    "meetingId": "dt-meet-03",
+    "title": "Ebrain DingTalk review 3",
+    "startTime": "2026-05-21T14:00:00.000Z",
+    "endTime": "2026-05-21T15:00:00.000Z",
+    "modifiedTime": "2026-05-21T15:10:00.000Z",
+    "hostUserId": "user-01",
+    "participantUserIds": [
+      "user-02",
+      "user-03",
+      "user-04"
+    ],
+    "recordingUrl": "https://dingtalk.example.com/meeting/recording/dt-meet-03",
+    "transcriptMarkdown": "## Transcript\n\n- Decision 3: keep DingTalk as MVP true integration.",
+    "transcriptUnavailableReason": null,
+    "url": "https://dingtalk.example.com/meeting/dt-meet-03",
+    "raw": {
+      "fixture": true
+    }
+  },
+  {
+    "meetingId": "dt-meet-04",
+    "title": "Ebrain DingTalk review 4",
+    "startTime": "2026-05-22T14:00:00.000Z",
+    "endTime": "2026-05-22T15:00:00.000Z",
+    "modifiedTime": "2026-05-22T15:10:00.000Z",
+    "hostUserId": "user-01",
+    "participantUserIds": [
+      "user-02",
+      "user-03",
+      "user-04"
+    ],
+    "recordingUrl": "https://dingtalk.example.com/meeting/recording/dt-meet-04",
+    "transcriptMarkdown": null,
+    "transcriptUnavailableReason": "transcript API did not return content for this meeting",
+    "url": "https://dingtalk.example.com/meeting/dt-meet-04",
+    "raw": {
+      "fixture": true
+    }
+  },
+  {
+    "meetingId": "dt-meet-05",
+    "title": "Ebrain DingTalk review 5",
+    "startTime": "2026-05-23T14:00:00.000Z",
+    "endTime": "2026-05-23T15:00:00.000Z",
+    "modifiedTime": "2026-05-23T15:10:00.000Z",
+    "hostUserId": "user-01",
+    "participantUserIds": [
+      "user-02",
+      "user-03",
+      "user-04"
+    ],
+    "recordingUrl": "https://dingtalk.example.com/meeting/recording/dt-meet-05",
+    "transcriptMarkdown": "## Transcript\n\n- Decision 5: keep DingTalk as MVP true integration.",
+    "transcriptUnavailableReason": null,
+    "url": "https://dingtalk.example.com/meeting/dt-meet-05",
+    "raw": {
+      "fixture": true
+    }
+  },
+  {
+    "meetingId": "dt-meet-06",
+    "title": "Ebrain DingTalk review 6",
+    "startTime": "2026-05-24T14:00:00.000Z",
+    "endTime": "2026-05-24T15:00:00.000Z",
+    "modifiedTime": "2026-05-24T15:10:00.000Z",
+    "hostUserId": "user-01",
+    "participantUserIds": [
+      "user-02",
+      "user-03",
+      "user-04"
+    ],
+    "recordingUrl": "https://dingtalk.example.com/meeting/recording/dt-meet-06",
+    "transcriptMarkdown": null,
+    "transcriptUnavailableReason": "transcript API did not return content for this meeting",
+    "url": "https://dingtalk.example.com/meeting/dt-meet-06",
+    "raw": {
+      "fixture": true
+    }
+  }
+]

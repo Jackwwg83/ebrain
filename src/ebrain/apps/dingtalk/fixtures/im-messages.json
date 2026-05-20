@@ -1,0 +1,786 @@
+[
+  {
+    "messageId": "dt-msg-001",
+    "conversationId": "dt-conv-eng",
+    "conversationTitle": "Ebrain Dev Engineering",
+    "senderUserId": "user-02",
+    "senderName": "user-02",
+    "createTime": "2026-05-21T10:07:00.000Z",
+    "msgtype": "text",
+    "text": "DingTalk fixture message 1 for Ebrain Stage C2 validation.",
+    "url": "https://dingtalk.example.com/conversation/eng/messages/dt-msg-001",
+    "raw": {
+      "messageSource": "fixture",
+      "sequence": 1
+    }
+  },
+  {
+    "messageId": "dt-msg-002",
+    "conversationId": "dt-conv-eng",
+    "conversationTitle": "Ebrain Dev Engineering",
+    "senderUserId": "user-03",
+    "senderName": "user-03",
+    "createTime": "2026-05-22T11:14:00.000Z",
+    "msgtype": "text",
+    "text": "DingTalk fixture message 2 for Ebrain Stage C2 validation.",
+    "url": "https://dingtalk.example.com/conversation/eng/messages/dt-msg-002",
+    "raw": {
+      "messageSource": "fixture",
+      "sequence": 2
+    }
+  },
+  {
+    "messageId": "dt-msg-003",
+    "conversationId": "dt-conv-eng",
+    "conversationTitle": "Ebrain Dev Engineering",
+    "senderUserId": "user-04",
+    "senderName": "user-04",
+    "createTime": "2026-05-20T12:21:00.000Z",
+    "msgtype": "text",
+    "text": "DingTalk fixture message 3 for Ebrain Stage C2 validation.",
+    "url": "https://dingtalk.example.com/conversation/eng/messages/dt-msg-003",
+    "raw": {
+      "messageSource": "fixture",
+      "sequence": 3
+    }
+  },
+  {
+    "messageId": "dt-msg-004",
+    "conversationId": "dt-conv-eng",
+    "conversationTitle": "Ebrain Dev Engineering",
+    "senderUserId": "user-05",
+    "senderName": "user-05",
+    "createTime": "2026-05-21T13:28:00.000Z",
+    "msgtype": "text",
+    "text": "DingTalk fixture message 4 for Ebrain Stage C2 validation.",
+    "url": "https://dingtalk.example.com/conversation/eng/messages/dt-msg-004",
+    "raw": {
+      "messageSource": "fixture",
+      "sequence": 4
+    }
+  },
+  {
+    "messageId": "dt-msg-005",
+    "conversationId": "dt-conv-eng",
+    "conversationTitle": "Ebrain Dev Engineering",
+    "senderUserId": "user-06",
+    "senderName": "user-06",
+    "createTime": "2026-05-22T14:35:00.000Z",
+    "msgtype": "text",
+    "text": "DingTalk fixture message 5 for Ebrain Stage C2 validation.",
+    "url": "https://dingtalk.example.com/conversation/eng/messages/dt-msg-005",
+    "raw": {
+      "messageSource": "fixture",
+      "sequence": 5
+    }
+  },
+  {
+    "messageId": "dt-msg-006",
+    "conversationId": "dt-conv-eng",
+    "conversationTitle": "Ebrain Dev Engineering",
+    "senderUserId": "user-07",
+    "senderName": "user-07",
+    "createTime": "2026-05-20T15:42:00.000Z",
+    "msgtype": "text",
+    "text": "Thread alpha update 1: rate-limit and webhook readiness.",
+    "url": "https://dingtalk.example.com/conversation/eng/messages/dt-msg-006",
+    "raw": {
+      "messageSource": "fixture",
+      "sequence": 6
+    },
+    "parentMessageId": "dt-msg-006",
+    "replyChainId": "chain-alpha"
+  },
+  {
+    "messageId": "dt-msg-007",
+    "conversationId": "dt-conv-eng",
+    "conversationTitle": "Ebrain Dev Engineering",
+    "senderUserId": "user-08",
+    "senderName": "user-08",
+    "createTime": "2026-05-21T16:49:00.000Z",
+    "msgtype": "text",
+    "text": "Thread alpha update 2: rate-limit and webhook readiness.",
+    "url": "https://dingtalk.example.com/conversation/eng/messages/dt-msg-007",
+    "raw": {
+      "messageSource": "fixture",
+      "sequence": 7
+    },
+    "parentMessageId": "dt-msg-006",
+    "replyChainId": "chain-alpha"
+  },
+  {
+    "messageId": "dt-msg-008",
+    "conversationId": "dt-conv-eng",
+    "conversationTitle": "Ebrain Dev Engineering",
+    "senderUserId": "user-01",
+    "senderName": "user-01",
+    "createTime": "2026-05-22T09:56:00.000Z",
+    "msgtype": "text",
+    "text": "Thread alpha update 3: rate-limit and webhook readiness.",
+    "url": "https://dingtalk.example.com/conversation/eng/messages/dt-msg-008",
+    "raw": {
+      "messageSource": "fixture",
+      "sequence": 8
+    },
+    "parentMessageId": "dt-msg-006",
+    "replyChainId": "chain-alpha"
+  },
+  {
+    "messageId": "dt-msg-009",
+    "conversationId": "dt-conv-eng",
+    "conversationTitle": "Ebrain Dev Engineering",
+    "senderUserId": "user-02",
+    "senderName": "user-02",
+    "createTime": "2026-05-20T10:03:00.000Z",
+    "msgtype": "text",
+    "text": "DingTalk fixture message 9 for Ebrain Stage C2 validation.",
+    "url": "https://dingtalk.example.com/conversation/eng/messages/dt-msg-009",
+    "raw": {
+      "messageSource": "fixture",
+      "sequence": 9
+    }
+  },
+  {
+    "messageId": "dt-msg-010",
+    "conversationId": "dt-conv-eng",
+    "conversationTitle": "Ebrain Dev Engineering",
+    "senderUserId": "user-03",
+    "senderName": "user-03",
+    "createTime": "2026-05-21T11:10:00.000Z",
+    "msgtype": "text",
+    "text": "DingTalk fixture message 10 for Ebrain Stage C2 validation.",
+    "url": "https://dingtalk.example.com/conversation/eng/messages/dt-msg-010",
+    "raw": {
+      "messageSource": "fixture",
+      "sequence": 10
+    }
+  },
+  {
+    "messageId": "dt-msg-011",
+    "conversationId": "dt-conv-eng",
+    "conversationTitle": "Ebrain Dev Engineering",
+    "senderUserId": "user-04",
+    "senderName": "user-04",
+    "createTime": "2026-05-22T12:17:00.000Z",
+    "msgtype": "text",
+    "text": "DingTalk fixture message 11 for Ebrain Stage C2 validation.",
+    "url": "https://dingtalk.example.com/conversation/eng/messages/dt-msg-011",
+    "raw": {
+      "messageSource": "fixture",
+      "sequence": 11
+    }
+  },
+  {
+    "messageId": "dt-msg-012",
+    "conversationId": "dt-conv-eng",
+    "conversationTitle": "Ebrain Dev Engineering",
+    "senderUserId": "user-05",
+    "senderName": "user-05",
+    "createTime": "2026-05-20T13:24:00.000Z",
+    "msgtype": "text",
+    "text": "DingTalk fixture message 12 for Ebrain Stage C2 validation.",
+    "url": "https://dingtalk.example.com/conversation/eng/messages/dt-msg-012",
+    "raw": {
+      "messageSource": "fixture",
+      "sequence": 12
+    }
+  },
+  {
+    "messageId": "dt-msg-013",
+    "conversationId": "dt-conv-eng",
+    "conversationTitle": "Ebrain Dev Engineering",
+    "senderUserId": "user-06",
+    "senderName": "user-06",
+    "createTime": "2026-05-21T14:31:00.000Z",
+    "msgtype": "text",
+    "text": "DingTalk fixture message 13 for Ebrain Stage C2 validation.",
+    "url": "https://dingtalk.example.com/conversation/eng/messages/dt-msg-013",
+    "raw": {
+      "messageSource": "fixture",
+      "sequence": 13
+    }
+  },
+  {
+    "messageId": "dt-msg-014",
+    "conversationId": "dt-conv-eng",
+    "conversationTitle": "Ebrain Dev Engineering",
+    "senderUserId": "user-07",
+    "senderName": "user-07",
+    "createTime": "2026-05-22T15:38:00.000Z",
+    "msgtype": "text",
+    "text": "DingTalk fixture message 14 for Ebrain Stage C2 validation.",
+    "url": "https://dingtalk.example.com/conversation/eng/messages/dt-msg-014",
+    "raw": {
+      "messageSource": "fixture",
+      "sequence": 14
+    }
+  },
+  {
+    "messageId": "dt-msg-015",
+    "conversationId": "dt-conv-eng",
+    "conversationTitle": "Ebrain Dev Engineering",
+    "senderUserId": "user-08",
+    "senderName": "user-08",
+    "createTime": "2026-05-20T16:45:00.000Z",
+    "msgtype": "text",
+    "text": "DingTalk fixture message 15 for Ebrain Stage C2 validation.",
+    "url": "https://dingtalk.example.com/conversation/eng/messages/dt-msg-015",
+    "raw": {
+      "messageSource": "fixture",
+      "sequence": 15
+    }
+  },
+  {
+    "messageId": "dt-msg-016",
+    "conversationId": "dt-conv-eng",
+    "conversationTitle": "Ebrain Dev Engineering",
+    "senderUserId": "user-01",
+    "senderName": "user-01",
+    "createTime": "2026-05-21T09:52:00.000Z",
+    "msgtype": "text",
+    "text": "DingTalk fixture message 16 for Ebrain Stage C2 validation.",
+    "url": "https://dingtalk.example.com/conversation/eng/messages/dt-msg-016",
+    "raw": {
+      "messageSource": "fixture",
+      "sequence": 16
+    }
+  },
+  {
+    "messageId": "dt-msg-017",
+    "conversationId": "dt-conv-eng",
+    "conversationTitle": "Ebrain Dev Engineering",
+    "senderUserId": "user-02",
+    "senderName": "user-02",
+    "createTime": "2026-05-22T10:59:00.000Z",
+    "msgtype": "text",
+    "text": "DingTalk fixture message 17 for Ebrain Stage C2 validation.",
+    "url": "https://dingtalk.example.com/conversation/eng/messages/dt-msg-017",
+    "raw": {
+      "messageSource": "fixture",
+      "sequence": 17
+    }
+  },
+  {
+    "messageId": "dt-msg-018",
+    "conversationId": "dt-conv-eng",
+    "conversationTitle": "Ebrain Dev Engineering",
+    "senderUserId": "user-03",
+    "senderName": "user-03",
+    "createTime": "2026-05-20T11:06:00.000Z",
+    "msgtype": "text",
+    "text": "DingTalk fixture message 18 for Ebrain Stage C2 validation.",
+    "url": "https://dingtalk.example.com/conversation/eng/messages/dt-msg-018",
+    "raw": {
+      "messageSource": "fixture",
+      "sequence": 18
+    }
+  },
+  {
+    "messageId": "dt-msg-019",
+    "conversationId": "dt-conv-eng",
+    "conversationTitle": "Ebrain Dev Engineering",
+    "senderUserId": "user-04",
+    "senderName": "user-04",
+    "createTime": "2026-05-21T12:13:00.000Z",
+    "msgtype": "text",
+    "text": "DingTalk fixture message 19 for Ebrain Stage C2 validation.",
+    "url": "https://dingtalk.example.com/conversation/eng/messages/dt-msg-019",
+    "raw": {
+      "messageSource": "fixture",
+      "sequence": 19
+    }
+  },
+  {
+    "messageId": "dt-msg-020",
+    "conversationId": "dt-conv-eng",
+    "conversationTitle": "Ebrain Dev Engineering",
+    "senderUserId": "user-05",
+    "senderName": "user-05",
+    "createTime": "2026-05-22T13:20:00.000Z",
+    "msgtype": "text",
+    "text": "DingTalk fixture message 20 for Ebrain Stage C2 validation.",
+    "url": "https://dingtalk.example.com/conversation/eng/messages/dt-msg-020",
+    "raw": {
+      "messageSource": "fixture",
+      "sequence": 20
+    }
+  },
+  {
+    "messageId": "dt-msg-021",
+    "conversationId": "dt-conv-eng",
+    "conversationTitle": "Ebrain Dev Engineering",
+    "senderUserId": "user-06",
+    "senderName": "user-06",
+    "createTime": "2026-05-20T14:27:00.000Z",
+    "msgtype": "text",
+    "text": "DingTalk fixture message 21 for Ebrain Stage C2 validation.",
+    "url": "https://dingtalk.example.com/conversation/eng/messages/dt-msg-021",
+    "raw": {
+      "messageSource": "fixture",
+      "sequence": 21
+    }
+  },
+  {
+    "messageId": "dt-msg-022",
+    "conversationId": "dt-conv-eng",
+    "conversationTitle": "Ebrain Dev Engineering",
+    "senderUserId": "user-07",
+    "senderName": "user-07",
+    "createTime": "2026-05-22T10:00:00.000Z",
+    "msgtype": "text",
+    "text": "Approval workflow discussion 1.",
+    "url": "https://dingtalk.example.com/conversation/eng/messages/dt-msg-022",
+    "raw": {
+      "messageSource": "fixture",
+      "sequence": 22
+    },
+    "parentMessageId": "dt-msg-022",
+    "replyChainId": "chain-approval"
+  },
+  {
+    "messageId": "dt-msg-023",
+    "conversationId": "dt-conv-eng",
+    "conversationTitle": "Ebrain Dev Engineering",
+    "senderUserId": "user-08",
+    "senderName": "user-08",
+    "createTime": "2026-05-22T10:01:00.000Z",
+    "msgtype": "text",
+    "text": "Approval workflow discussion 2.",
+    "url": "https://dingtalk.example.com/conversation/eng/messages/dt-msg-023",
+    "raw": {
+      "messageSource": "fixture",
+      "sequence": 23
+    },
+    "parentMessageId": "dt-msg-022",
+    "replyChainId": "chain-approval",
+    "workflow": {
+      "approvalId": "appr-023",
+      "title": "Dev webhook rollout approval",
+      "status": "pending",
+      "requesterUserId": "user-03",
+      "approverUserIds": [
+        "user-04",
+        "user-05"
+      ]
+    }
+  },
+  {
+    "messageId": "dt-msg-024",
+    "conversationId": "dt-conv-eng",
+    "conversationTitle": "Ebrain Dev Engineering",
+    "senderUserId": "user-01",
+    "senderName": "user-01",
+    "createTime": "2026-05-22T10:02:00.000Z",
+    "msgtype": "text",
+    "text": "Approval workflow discussion 3.",
+    "url": "https://dingtalk.example.com/conversation/eng/messages/dt-msg-024",
+    "raw": {
+      "messageSource": "fixture",
+      "sequence": 24
+    },
+    "parentMessageId": "dt-msg-022",
+    "replyChainId": "chain-approval",
+    "workflow": {
+      "approvalId": "appr-024",
+      "title": "Dev webhook rollout approval",
+      "status": "approved",
+      "requesterUserId": "user-03",
+      "approverUserIds": [
+        "user-04",
+        "user-05"
+      ]
+    }
+  },
+  {
+    "messageId": "dt-msg-025",
+    "conversationId": "dt-conv-eng",
+    "conversationTitle": "Ebrain Dev Engineering",
+    "senderUserId": "user-02",
+    "senderName": "user-02",
+    "createTime": "2026-05-22T10:03:00.000Z",
+    "msgtype": "text",
+    "text": "Approval workflow discussion 4.",
+    "url": "https://dingtalk.example.com/conversation/eng/messages/dt-msg-025",
+    "raw": {
+      "messageSource": "fixture",
+      "sequence": 25
+    },
+    "parentMessageId": "dt-msg-022",
+    "replyChainId": "chain-approval"
+  },
+  {
+    "messageId": "dt-msg-026",
+    "conversationId": "dt-conv-eng",
+    "conversationTitle": "Ebrain Dev Engineering",
+    "senderUserId": "user-03",
+    "senderName": "user-03",
+    "createTime": "2026-05-22T11:02:00.000Z",
+    "msgtype": "text",
+    "text": "DingTalk fixture message 26 for Ebrain Stage C2 validation.",
+    "url": "https://dingtalk.example.com/conversation/eng/messages/dt-msg-026",
+    "raw": {
+      "messageSource": "fixture",
+      "sequence": 26
+    }
+  },
+  {
+    "messageId": "dt-msg-027",
+    "conversationId": "dt-conv-eng",
+    "conversationTitle": "Ebrain Dev Engineering",
+    "senderUserId": "user-04",
+    "senderName": "user-04",
+    "createTime": "2026-05-20T12:09:00.000Z",
+    "msgtype": "text",
+    "text": "DingTalk fixture message 27 for Ebrain Stage C2 validation.",
+    "url": "https://dingtalk.example.com/conversation/eng/messages/dt-msg-027",
+    "raw": {
+      "messageSource": "fixture",
+      "sequence": 27
+    }
+  },
+  {
+    "messageId": "dt-msg-028",
+    "conversationId": "dt-conv-eng",
+    "conversationTitle": "Ebrain Dev Engineering",
+    "senderUserId": "user-05",
+    "senderName": "user-05",
+    "createTime": "2026-05-21T13:16:00.000Z",
+    "msgtype": "text",
+    "text": "DingTalk fixture message 28 for Ebrain Stage C2 validation.",
+    "url": "https://dingtalk.example.com/conversation/eng/messages/dt-msg-028",
+    "raw": {
+      "messageSource": "fixture",
+      "sequence": 28
+    }
+  },
+  {
+    "messageId": "dt-msg-029",
+    "conversationId": "dt-conv-eng",
+    "conversationTitle": "Ebrain Dev Engineering",
+    "senderUserId": "user-06",
+    "senderName": "user-06",
+    "createTime": "2026-05-22T14:23:00.000Z",
+    "msgtype": "text",
+    "text": "DingTalk fixture message 29 for Ebrain Stage C2 validation.",
+    "url": "https://dingtalk.example.com/conversation/eng/messages/dt-msg-029",
+    "raw": {
+      "messageSource": "fixture",
+      "sequence": 29
+    }
+  },
+  {
+    "messageId": "dt-msg-030",
+    "conversationId": "dt-conv-eng",
+    "conversationTitle": "Ebrain Dev Engineering",
+    "senderUserId": "user-07",
+    "senderName": "user-07",
+    "createTime": "2026-05-20T15:30:00.000Z",
+    "msgtype": "text",
+    "text": "DingTalk fixture message 30 for Ebrain Stage C2 validation.",
+    "url": "https://dingtalk.example.com/conversation/eng/messages/dt-msg-030",
+    "raw": {
+      "messageSource": "fixture",
+      "sequence": 30
+    }
+  },
+  {
+    "messageId": "dt-msg-031",
+    "conversationId": "dt-conv-product",
+    "conversationTitle": "Ebrain Product Ops",
+    "senderUserId": "user-08",
+    "senderName": "user-08",
+    "createTime": "2026-05-21T16:37:00.000Z",
+    "msgtype": "text",
+    "text": "DingTalk fixture message 31 for Ebrain Stage C2 validation.",
+    "url": "https://dingtalk.example.com/conversation/product/messages/dt-msg-031",
+    "raw": {
+      "messageSource": "fixture",
+      "sequence": 31
+    }
+  },
+  {
+    "messageId": "dt-msg-032",
+    "conversationId": "dt-conv-product",
+    "conversationTitle": "Ebrain Product Ops",
+    "senderUserId": "user-01",
+    "senderName": "user-01",
+    "createTime": "2026-05-22T09:44:00.000Z",
+    "msgtype": "text",
+    "text": "DingTalk fixture message 32 for Ebrain Stage C2 validation.",
+    "url": "https://dingtalk.example.com/conversation/product/messages/dt-msg-032",
+    "raw": {
+      "messageSource": "fixture",
+      "sequence": 32
+    }
+  },
+  {
+    "messageId": "dt-msg-033",
+    "conversationId": "dt-conv-product",
+    "conversationTitle": "Ebrain Product Ops",
+    "senderUserId": "user-02",
+    "senderName": "user-02",
+    "createTime": "2026-05-20T10:51:00.000Z",
+    "msgtype": "text",
+    "text": "DingTalk fixture message 33 for Ebrain Stage C2 validation.",
+    "url": "https://dingtalk.example.com/conversation/product/messages/dt-msg-033",
+    "raw": {
+      "messageSource": "fixture",
+      "sequence": 33
+    }
+  },
+  {
+    "messageId": "dt-msg-034",
+    "conversationId": "dt-conv-product",
+    "conversationTitle": "Ebrain Product Ops",
+    "senderUserId": "user-03",
+    "senderName": "user-03",
+    "createTime": "2026-05-21T11:58:00.000Z",
+    "msgtype": "text",
+    "text": "DingTalk fixture message 34 for Ebrain Stage C2 validation.",
+    "url": "https://dingtalk.example.com/conversation/product/messages/dt-msg-034",
+    "raw": {
+      "messageSource": "fixture",
+      "sequence": 34
+    }
+  },
+  {
+    "messageId": "dt-msg-035",
+    "conversationId": "dt-conv-product",
+    "conversationTitle": "Ebrain Product Ops",
+    "senderUserId": "user-04",
+    "senderName": "user-04",
+    "createTime": "2026-05-22T12:05:00.000Z",
+    "msgtype": "text",
+    "text": "DingTalk fixture message 35 for Ebrain Stage C2 validation.",
+    "url": "https://dingtalk.example.com/conversation/product/messages/dt-msg-035",
+    "raw": {
+      "messageSource": "fixture",
+      "sequence": 35
+    }
+  },
+  {
+    "messageId": "dt-msg-036",
+    "conversationId": "dt-conv-product",
+    "conversationTitle": "Ebrain Product Ops",
+    "senderUserId": "user-05",
+    "senderName": "user-05",
+    "createTime": "2026-05-20T13:12:00.000Z",
+    "msgtype": "text",
+    "text": "DingTalk fixture message 36 for Ebrain Stage C2 validation.",
+    "url": "https://dingtalk.example.com/conversation/product/messages/dt-msg-036",
+    "raw": {
+      "messageSource": "fixture",
+      "sequence": 36
+    }
+  },
+  {
+    "messageId": "dt-msg-037",
+    "conversationId": "dt-conv-product",
+    "conversationTitle": "Ebrain Product Ops",
+    "senderUserId": "user-06",
+    "senderName": "user-06",
+    "createTime": "2026-05-21T14:19:00.000Z",
+    "msgtype": "text",
+    "text": "DingTalk fixture message 37 for Ebrain Stage C2 validation.",
+    "url": "https://dingtalk.example.com/conversation/product/messages/dt-msg-037",
+    "raw": {
+      "messageSource": "fixture",
+      "sequence": 37
+    }
+  },
+  {
+    "messageId": "dt-msg-038",
+    "conversationId": "dt-conv-product",
+    "conversationTitle": "Ebrain Product Ops",
+    "senderUserId": "user-07",
+    "senderName": "user-07",
+    "createTime": "2026-05-22T15:26:00.000Z",
+    "msgtype": "text",
+    "text": "DingTalk fixture message 38 for Ebrain Stage C2 validation.",
+    "url": "https://dingtalk.example.com/conversation/product/messages/dt-msg-038",
+    "raw": {
+      "messageSource": "fixture",
+      "sequence": 38
+    }
+  },
+  {
+    "messageId": "dt-msg-039",
+    "conversationId": "dt-conv-product",
+    "conversationTitle": "Ebrain Product Ops",
+    "senderUserId": "user-08",
+    "senderName": "user-08",
+    "createTime": "2026-05-20T16:33:00.000Z",
+    "msgtype": "text",
+    "text": "DingTalk fixture message 39 for Ebrain Stage C2 validation.",
+    "url": "https://dingtalk.example.com/conversation/product/messages/dt-msg-039",
+    "raw": {
+      "messageSource": "fixture",
+      "sequence": 39
+    }
+  },
+  {
+    "messageId": "dt-msg-040",
+    "conversationId": "dt-conv-product",
+    "conversationTitle": "Ebrain Product Ops",
+    "senderUserId": "user-01",
+    "senderName": "user-01",
+    "createTime": "2026-05-21T09:40:00.000Z",
+    "msgtype": "text",
+    "text": "DingTalk fixture message 40 for Ebrain Stage C2 validation.",
+    "url": "https://dingtalk.example.com/conversation/product/messages/dt-msg-040",
+    "raw": {
+      "messageSource": "fixture",
+      "sequence": 40
+    }
+  },
+  {
+    "messageId": "dt-msg-041",
+    "conversationId": "dt-conv-product",
+    "conversationTitle": "Ebrain Product Ops",
+    "senderUserId": "user-02",
+    "senderName": "user-02",
+    "createTime": "2026-05-22T10:47:00.000Z",
+    "msgtype": "text",
+    "text": "DingTalk fixture message 41 for Ebrain Stage C2 validation.",
+    "url": "https://dingtalk.example.com/conversation/product/messages/dt-msg-041",
+    "raw": {
+      "messageSource": "fixture",
+      "sequence": 41
+    }
+  },
+  {
+    "messageId": "dt-msg-042",
+    "conversationId": "dt-conv-product",
+    "conversationTitle": "Ebrain Product Ops",
+    "senderUserId": "user-03",
+    "senderName": "user-03",
+    "createTime": "2026-05-20T11:54:00.000Z",
+    "msgtype": "text",
+    "text": "DingTalk fixture message 42 for Ebrain Stage C2 validation.",
+    "url": "https://dingtalk.example.com/conversation/product/messages/dt-msg-042",
+    "raw": {
+      "messageSource": "fixture",
+      "sequence": 42
+    }
+  },
+  {
+    "messageId": "dt-msg-043",
+    "conversationId": "dt-conv-product",
+    "conversationTitle": "Ebrain Product Ops",
+    "senderUserId": "user-04",
+    "senderName": "user-04",
+    "createTime": "2026-05-21T12:01:00.000Z",
+    "msgtype": "text",
+    "text": "DingTalk fixture message 43 for Ebrain Stage C2 validation.",
+    "url": "https://dingtalk.example.com/conversation/product/messages/dt-msg-043",
+    "raw": {
+      "messageSource": "fixture",
+      "sequence": 43
+    }
+  },
+  {
+    "messageId": "dt-msg-044",
+    "conversationId": "dt-conv-product",
+    "conversationTitle": "Ebrain Product Ops",
+    "senderUserId": "user-05",
+    "senderName": "user-05",
+    "createTime": "2026-05-22T13:08:00.000Z",
+    "msgtype": "text",
+    "text": "DingTalk fixture message 44 for Ebrain Stage C2 validation.",
+    "url": "https://dingtalk.example.com/conversation/product/messages/dt-msg-044",
+    "raw": {
+      "messageSource": "fixture",
+      "sequence": 44
+    }
+  },
+  {
+    "messageId": "dt-msg-045",
+    "conversationId": "dt-conv-product",
+    "conversationTitle": "Ebrain Product Ops",
+    "senderUserId": "user-06",
+    "senderName": "user-06",
+    "createTime": "2026-05-20T14:15:00.000Z",
+    "msgtype": "text",
+    "text": "DingTalk fixture message 45 for Ebrain Stage C2 validation.",
+    "url": "https://dingtalk.example.com/conversation/product/messages/dt-msg-045",
+    "raw": {
+      "messageSource": "fixture",
+      "sequence": 45
+    }
+  },
+  {
+    "messageId": "dt-msg-046",
+    "conversationId": "dt-conv-product",
+    "conversationTitle": "Ebrain Product Ops",
+    "senderUserId": "user-07",
+    "senderName": "user-07",
+    "createTime": "2026-05-21T15:22:00.000Z",
+    "msgtype": "text",
+    "text": "DingTalk fixture message 46 for Ebrain Stage C2 validation.",
+    "url": "https://dingtalk.example.com/conversation/product/messages/dt-msg-046",
+    "raw": {
+      "messageSource": "fixture",
+      "sequence": 46
+    }
+  },
+  {
+    "messageId": "dt-msg-047",
+    "conversationId": "dt-conv-product",
+    "conversationTitle": "Ebrain Product Ops",
+    "senderUserId": "user-08",
+    "senderName": "user-08",
+    "createTime": "2026-05-22T16:29:00.000Z",
+    "msgtype": "text",
+    "text": "DingTalk fixture message 47 for Ebrain Stage C2 validation.",
+    "url": "https://dingtalk.example.com/conversation/product/messages/dt-msg-047",
+    "raw": {
+      "messageSource": "fixture",
+      "sequence": 47
+    }
+  },
+  {
+    "messageId": "dt-msg-048",
+    "conversationId": "dt-conv-product",
+    "conversationTitle": "Ebrain Product Ops",
+    "senderUserId": "user-01",
+    "senderName": "user-01",
+    "createTime": "2026-05-20T09:36:00.000Z",
+    "msgtype": "text",
+    "text": "DingTalk fixture message 48 for Ebrain Stage C2 validation.",
+    "url": "https://dingtalk.example.com/conversation/product/messages/dt-msg-048",
+    "raw": {
+      "messageSource": "fixture",
+      "sequence": 48
+    }
+  },
+  {
+    "messageId": "dt-msg-049",
+    "conversationId": "dt-conv-product",
+    "conversationTitle": "Ebrain Product Ops",
+    "senderUserId": "user-02",
+    "senderName": "user-02",
+    "createTime": "2026-05-21T10:43:00.000Z",
+    "msgtype": "text",
+    "text": "DingTalk fixture message 49 for Ebrain Stage C2 validation.",
+    "url": "https://dingtalk.example.com/conversation/product/messages/dt-msg-049",
+    "raw": {
+      "messageSource": "fixture",
+      "sequence": 49
+    }
+  },
+  {
+    "messageId": "dt-msg-050",
+    "conversationId": "dt-conv-product",
+    "conversationTitle": "Ebrain Product Ops",
+    "senderUserId": "user-03",
+    "senderName": "user-03",
+    "createTime": "2026-05-22T11:50:00.000Z",
+    "msgtype": "text",
+    "text": "DingTalk fixture message 50 for Ebrain Stage C2 validation.",
+    "url": "https://dingtalk.example.com/conversation/product/messages/dt-msg-050",
+    "raw": {
+      "messageSource": "fixture",
+      "sequence": 50
+    }
+  }
+]

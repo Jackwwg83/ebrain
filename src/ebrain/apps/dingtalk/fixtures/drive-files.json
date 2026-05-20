@@ -1,0 +1,114 @@
+[
+  {
+    "fileId": "dt-file-01",
+    "name": "enterprise-readiness-1.pdf",
+    "modifiedTime": "2026-05-18T11:01:00.000Z",
+    "ownerUserId": "user-02",
+    "size": 2048,
+    "mimeType": "application/pdf",
+    "rawRef": "oss://dingtalk-fixtures/dt-file-01",
+    "url": "https://dingtalk.example.com/drive/dt-file-01",
+    "raw": {
+      "downloadSkipped": true,
+      "fixture": true
+    }
+  },
+  {
+    "fileId": "dt-file-02",
+    "name": "enterprise-readiness-2.pdf",
+    "modifiedTime": "2026-05-19T11:02:00.000Z",
+    "ownerUserId": "user-03",
+    "size": 4096,
+    "mimeType": "application/pdf",
+    "rawRef": "oss://dingtalk-fixtures/dt-file-02",
+    "url": "https://dingtalk.example.com/drive/dt-file-02",
+    "raw": {
+      "downloadSkipped": true,
+      "fixture": true
+    }
+  },
+  {
+    "fileId": "dt-file-03",
+    "name": "enterprise-readiness-3.pdf",
+    "modifiedTime": "2026-05-20T11:03:00.000Z",
+    "ownerUserId": "user-04",
+    "size": 6144,
+    "mimeType": "application/pdf",
+    "rawRef": "oss://dingtalk-fixtures/dt-file-03",
+    "url": "https://dingtalk.example.com/drive/dt-file-03",
+    "raw": {
+      "downloadSkipped": true,
+      "fixture": true
+    }
+  },
+  {
+    "fileId": "dt-file-04",
+    "name": "enterprise-readiness-4.pdf",
+    "modifiedTime": "2026-05-21T11:04:00.000Z",
+    "ownerUserId": "user-05",
+    "size": 8192,
+    "mimeType": "application/pdf",
+    "rawRef": "oss://dingtalk-fixtures/dt-file-04",
+    "url": "https://dingtalk.example.com/drive/dt-file-04",
+    "raw": {
+      "downloadSkipped": true,
+      "fixture": true
+    }
+  },
+  {
+    "fileId": "dt-file-05",
+    "name": "enterprise-readiness-5.pdf",
+    "modifiedTime": "2026-05-22T11:05:00.000Z",
+    "ownerUserId": "user-01",
+    "size": 10240,
+    "mimeType": "application/pdf",
+    "rawRef": "oss://dingtalk-fixtures/dt-file-05",
+    "url": "https://dingtalk.example.com/drive/dt-file-05",
+    "raw": {
+      "downloadSkipped": true,
+      "fixture": true
+    }
+  },
+  {
+    "fileId": "dt-file-06",
+    "name": "enterprise-readiness-6.pdf",
+    "modifiedTime": "2026-05-23T11:06:00.000Z",
+    "ownerUserId": "user-02",
+    "size": 12288,
+    "mimeType": "application/pdf",
+    "rawRef": "oss://dingtalk-fixtures/dt-file-06",
+    "url": "https://dingtalk.example.com/drive/dt-file-06",
+    "raw": {
+      "downloadSkipped": true,
+      "fixture": true
+    }
+  },
+  {
+    "fileId": "dt-file-07",
+    "name": "enterprise-readiness-7.pdf",
+    "modifiedTime": "2026-05-24T11:07:00.000Z",
+    "ownerUserId": "user-03",
+    "size": 14336,
+    "mimeType": "application/pdf",
+    "rawRef": "oss://dingtalk-fixtures/dt-file-07",
+    "url": "https://dingtalk.example.com/drive/dt-file-07",
+    "raw": {
+      "downloadSkipped": true,
+      "fixture": true
+    }
+  },
+  {
+    "fileId": "dt-file-08",
+    "name": "enterprise-readiness-8.pdf",
+    "modifiedTime": "2026-05-25T11:08:00.000Z",
+    "ownerUserId": "user-04",
+    "size": 16384,
+    "mimeType": "application/pdf",
+    "rawRef": "oss://dingtalk-fixtures/dt-file-08",
+    "url": "https://dingtalk.example.com/drive/dt-file-08",
+    "raw": {
+      "downloadSkipped": true,
+      "fixture": true
+    }
+  }
+]
