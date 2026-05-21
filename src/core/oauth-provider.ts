@@ -78,6 +78,15 @@ function validateRedirectUri(uri: string): void {
   );
 }
 
+function isUndefinedTableError(error: unknown, table: string): boolean {
+  const code = typeof error === 'object' && error !== null && 'code' in error
+    ? String((error as { code?: unknown }).code)
+    : '';
+  if (code === '42P01') return true;
+  const message = error instanceof Error ? error.message : String(error);
+  return message.includes(table) && /does not exist|no such table|undefined table/i.test(message);
+}
+
 /**
  * Coerce an OAuth timestamp column (Unix epoch seconds, BIGINT) into a JS
  * number, or undefined for SQL NULL.
@@ -495,8 +504,10 @@ export class GBrainOAuthProvider implements OAuthServerProvider {
       oauthRows = await this.sql`
         SELECT t.client_id, t.scopes, t.expires_at, t.resource, c.client_name,
                c.source_id, c.federated_read
+              , e.executive_id, e.email AS executive_email, e.role AS executive_role
         FROM oauth_tokens t
         LEFT JOIN oauth_clients c ON c.client_id = t.client_id
+        LEFT JOIN executives e ON e.executive_id = c.executive_id AND e.deleted_at IS NULL
         WHERE t.token_hash = ${tokenHash} AND t.token_type = 'access'
       `;
     } catch (err) {
@@ -505,7 +516,7 @@ export class GBrainOAuthProvider implements OAuthServerProvider {
       // projection so auth keeps working until the operator runs
       // apply-migrations. Probe both column names so partial-upgrade brains
       // (v60 applied but v61 didn't yet) also fall through cleanly.
-      if (isUndefinedColumnError(err, 'source_id') || isUndefinedColumnError(err, 'federated_read')) {
+      if (isUndefinedColumnError(err, 'source_id') || isUndefinedColumnError(err, 'federated_read') || isUndefinedColumnError(err, 'executive_id') || isUndefinedColumnError(err, 'email') || isUndefinedColumnError(err, 'role') || isUndefinedTableError(err, 'executives')) {
         // Try the v60-only projection first (source_id but no federated_read).
         try {
           oauthRows = await this.sql`
@@ -565,6 +576,9 @@ export class GBrainOAuthProvider implements OAuthServerProvider {
         // operations.ts prefers this array over scalar sourceId when set
         // and non-empty.
         allowedSources,
+        executiveId: (row.executive_id as string | null) ?? undefined,
+        executiveEmail: (row.executive_email as string | null) ?? undefined,
+        executiveRole: (row.executive_role as string | null) ?? undefined,
       } as AuthInfo;
     }
 
@@ -714,12 +728,14 @@ export class GBrainOAuthProvider implements OAuthServerProvider {
     redirectUris: string[] = [],
     sourceId: string = 'default',
     federatedRead?: string[],
+    executiveId?: string,
   ): Promise<{ clientId: string; clientSecret: string }> {
     // v0.28: ALLOWED_SCOPES allowlist. Reject `--scopes "read flying-unicorn"`
     // at registration so meaningless scope strings can't pile up in the DB.
     // Pre-allowlist clients keep working (allowlist is registration-time;
     // existing rows aren't re-validated).
     assertAllowedScopes(parseScopeString(scopes));
+    const normalizedExecutiveId = await this.requireActiveExecutiveId(executiveId);
 
     const clientId = generateToken('gbrain_cl_');
     const clientSecret = generateToken('gbrain_cs_');
@@ -777,7 +793,48 @@ export class GBrainOAuthProvider implements OAuthServerProvider {
       }
     }
 
+    await this.bindExecutiveToClient(clientId, normalizedExecutiveId);
     return { clientId, clientSecret };
+  }
+
+  async bindExecutiveToClient(
+    clientId: string,
+    executiveId: string,
+  ): Promise<{ clientId: string; executiveId: string }> {
+    const normalizedExecutiveId = await this.requireActiveExecutiveId(executiveId);
+    let rows: Record<string, unknown>[];
+    try {
+      rows = await this.sql`
+        UPDATE oauth_clients
+        SET executive_id = ${normalizedExecutiveId}
+        WHERE client_id = ${clientId} AND deleted_at IS NULL
+        RETURNING client_id, executive_id
+      `;
+    } catch (err) {
+      if (!isUndefinedColumnError(err, 'deleted_at')) throw err;
+      rows = await this.sql`
+        UPDATE oauth_clients
+        SET executive_id = ${normalizedExecutiveId}
+        WHERE client_id = ${clientId}
+        RETURNING client_id, executive_id
+      `;
+    }
+    if (rows.length === 0) throw new Error('invalid_client_id');
+    return {
+      clientId: rows[0].client_id as string,
+      executiveId: rows[0].executive_id as string,
+    };
+  }
+
+  private async requireActiveExecutiveId(executiveId: string | undefined): Promise<string> {
+    const normalized = typeof executiveId === 'string' ? executiveId.trim() : '';
+    if (!normalized) throw new Error('invalid_executive_id');
+    const rows = await this.sql`
+      SELECT executive_id FROM executives
+      WHERE executive_id = ${normalized} AND deleted_at IS NULL
+    `;
+    if (rows.length === 0) throw new Error('invalid_executive_id');
+    return normalized;
   }
 
   // -------------------------------------------------------------------------

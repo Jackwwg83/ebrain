@@ -2006,3 +2006,70 @@ STAGE-SUMMARY.md
 - M-002: `runFanoutExecutiveBrief` wraps each child submission in per-executive `try/catch`, continues later executives after one submit failure, logs failures, and returns `failed_submissions` plus `failures` without throwing when all submissions fail.
 - L-001: malformed `quiet_hours` such as `'08:00'` now logs `[executive-brief] invalid quiet_hours format ...` and preserves prior no-quiet-window behavior; undefined `quiet_hours` produces no warning.
 - Evidence: `bun run typecheck` exited 0; `bun test tests/ebrain/jobs/ 2>&1 | tail -5` -> 24 pass, 0 fail, 116 expect() calls; `bun run verify` exited 0; `git diff 09650395 -- 'src/core/' 'src/mcp/' --stat` returned empty.
+
+# Stage G2: OAuth executive_id Binding + Config Export
+
+## Status
+
+- Stage: G2
+- Branch: `ebrain-mvp`
+- Baseline: `9ecf49b5`
+- Scope: OAuth client executive binding, AuthInfo executive return fields, admin config export endpoint, CLI binding commands, focused OAuth/export tests.
+- Result: PASS locally. DCR remains RFC 7591-compatible with `oauth_clients.executive_id = NULL`; CLI/manual registration now requires a valid active executive.
+
+## Implementation
+
+- `src/core/oauth-provider.ts`: `verifyAccessToken(token)` now extends the existing OAuth token/client JOIN with `LEFT JOIN executives e ON e.executive_id = c.executive_id AND e.deleted_at IS NULL`, returning `executiveId`, `executiveEmail`, and `executiveRole` when the bound executive is active. NULL/legacy clients and soft-deleted executives keep verifying with executive fields undefined.
+- `src/core/oauth-provider.ts`: `registerClientManual(...)` now validates a non-empty active `executiveId` and binds the created OAuth client via the new public `bindExecutiveToClient(clientId, executiveId)` method. Invalid executives throw `invalid_executive_id`; missing clients throw `invalid_client_id`.
+- `src/core/oauth-provider.ts`: DCR `registerClient(...)` is unchanged and still omits `executive_id`, leaving DCR clients NULL until an admin post-binds them.
+- `src/commands/auth.ts`: `gbrain auth register-client` now requires `--executive-id <id>` and prints the executive binding on success. Added `gbrain auth bind-executive <client_id> <executive_id>` for post-binding DCR clients.
+- `src/ebrain/sso/exports.ts`: added Claude Desktop, Cursor, and generic JSON export helpers. All return pasteable JSON strings with `client_id`, `client_secret`, MCP URL, OAuth authorize/token/register/revoke/metadata endpoints, scopes, and registration metadata where applicable.
+- `src/ebrain/sso/bind-executive.ts`: added the Ebrain SSO wrapper around the provider binding method so CLI/admin code can call one testable helper.
+- `src/commands/serve-http.ts`: added `GET /admin/api/clients/:id/export?format=claude-desktop|cursor|json` behind admin cookie auth. Invalid format returns 400; no admin session returns 403 for this endpoint; successful responses are `application/json` bodies produced by the export helpers.
+- `src/commands/serve-http.ts`: existing admin client registration now requires `executiveId` in the request body and forwards it to `registerClientManual`, preserving the new manual-registration invariant.
+
+## Verification Evidence
+
+| Check | Result | Evidence |
+|---|---|---|
+| Start state | PASS | `git status --short --branch` showed `## ebrain-mvp...origin/ebrain-mvp`; `git rev-parse HEAD` -> `9ecf49b589bd993f72d8522df33c54b1d590c4aa` |
+| Typecheck | PASS | `bun run typecheck` -> `tsc --noEmit` exited 0 |
+| Focused OAuth/export tests | PASS | `bun test tests/ebrain/oauth/` -> 17 pass, 0 fail, 65 expect() calls |
+| Full verify | PASS | `bun run verify` -> privacy, proposal PII, test names, JSONB, source-id projection, progress, isolation, WASM, admin build, admin scope, CLI executable, system-of-record, eval glossary, synthetic corpus privacy, and typecheck all passed |
+| CLI missing executive | PASS | Temp PGLite run: `gbrain auth register-client foo --grant-types client_credentials --scopes read` exited 1 and printed `Error: --executive-id <id> is required` |
+| CLI bound executive | PASS | Temp PGLite run after `executives create ceo`: `gbrain auth register-client foo --executive-id ceo --grant-types client_credentials --scopes read` exited 0 and printed `Executive ID:     ceo` |
+| DCR NULL compatibility | PASS | `register-client-executive-required.test.ts` calls the provider DCR store path, then reads `oauth_clients.executive_id` as SQL NULL |
+| verifyAccessToken executive JOIN | PASS | `verify-access-token-executive.test.ts` mints a real PGLite OAuth token for a client bound to `ceo`; `verifyAccessToken` returns `executiveId='ceo'`, `executiveEmail='ceo@example.test'`, and `executiveRole='CEO'` |
+| Legacy NULL compatibility | PASS | `verify-access-token-executive.test.ts` mints a DCR client with NULL `executive_id`; `verifyAccessToken` still succeeds and returns executive fields undefined |
+| Soft-deleted executive compatibility | PASS | `verify-access-token-executive.test.ts` soft-deletes the bound executive before verification; the token still verifies and `executiveId` is undefined |
+| Post-bind DCR client | PASS | `bind-executive-to-client.test.ts` creates a DCR client, runs `bindExecutiveToClient`, mints a token, and verifies returned executive fields |
+| Export formats | PASS | `exports.test.ts` parses all three helper outputs as JSON and checks MCP/OAuth endpoint fields plus `client_id`, `client_secret`, and scopes |
+| Admin export endpoint | PASS | `serve-http-export.test.ts` starts a real `gbrain serve --http` on temp PGLite, obtains an admin cookie through the magic-link flow, observes no-cookie 403, invalid format 400, and all three export formats returning parseable JSON with OAuth endpoints |
+| Append-only guard: `oauth-provider.ts` | PASS | `git diff 9ecf49b5 -- src/core/oauth-provider.ts \| grep -cE '^-[^-]'` -> `1` (only existing fallback condition line extended) |
+| Append-only guard: `src/core/types.ts` | PASS | `git diff 9ecf49b5 -- src/core/types.ts \| grep -cE '^-[^-]'` -> `0`; AuthInfo executive optional fields were already present in `src/core/operations.ts` at the G2 baseline |
+| Append-only guard: `serve-http.ts` | PASS | `git diff 9ecf49b5 -- src/commands/serve-http.ts \| grep -cE '^-[^-]'` -> `0` |
+| Append-only guard: `auth.ts` | PASS | `git diff 9ecf49b5 -- src/commands/auth.ts \| grep -cE '^-[^-]'` -> `2` |
+| No `src/mcp` changes | PASS | `git diff 9ecf49b5 -- 'src/mcp/' --stat` returned empty |
+| No schema migration | PASS | `git diff 9ecf49b5 -- src/core/migrate.ts --stat` returned empty |
+
+## Files Changed
+
+```text
+src/commands/auth.ts
+src/commands/serve-http.ts
+src/core/oauth-provider.ts
+src/ebrain/sso/bind-executive.ts
+src/ebrain/sso/exports.ts
+tests/ebrain/oauth/bind-executive-to-client.test.ts
+tests/ebrain/oauth/exports.test.ts
+tests/ebrain/oauth/register-client-executive-required.test.ts
+tests/ebrain/oauth/serve-http-export.test.ts
+tests/ebrain/oauth/verify-access-token-executive.test.ts
+STAGE-SUMMARY.md
+```
+
+## Runtime Notes
+
+- OAuth client secrets remain one-time material; the export endpoint accepts `secret` or `client_secret` query input for immediate post-registration export and otherwise emits `PASTE_CLIENT_SECRET_HERE` rather than pretending the stored hash is a usable secret.
+- `src/core/types.ts` did not contain the active `AuthInfo` definition at this baseline; the existing active type in `src/core/operations.ts` already had `executiveId?`, `executiveEmail?`, and `executiveRole?`, so G2 only wires runtime population.
+- G2 adds no schema migration and does not touch `src/mcp/*`.

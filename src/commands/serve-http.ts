@@ -35,6 +35,7 @@ import { buildError, serializeError } from '../core/errors.ts';
 import { VERSION } from '../version.ts';
 import * as db from '../core/db.ts';
 import { sqlQueryForEngine, executeRawJsonb } from '../core/sql-query.ts';
+import { exportClaudeDesktopConfig, exportCursorConfig, exportGenericJson } from '../ebrain/sso/exports.ts';
 
 /**
  * /health endpoint timeout. 3s rather than 5s: Fly.io's default
@@ -585,6 +586,10 @@ export async function runServeHttp(engine: BrainEngine, options: ServeHttpOption
   function requireAdmin(req: express.Request, res: express.Response, next: express.NextFunction) {
     const sessionId = (req.cookies as Record<string, string>)?.gbrain_admin;
     if (!sessionId || !adminSessions.has(sessionId)) {
+      if (req.path.startsWith('/admin/api/clients/') && req.path.endsWith('/export')) {
+        res.status(403).json({ error: 'Admin authentication required' });
+        return;
+      }
       res.status(401).json({ error: 'Admin authentication required' });
       return;
     }
@@ -921,11 +926,16 @@ export async function runServeHttp(engine: BrainEngine, options: ServeHttpOption
   app.post('/admin/api/register-client', requireAdmin, express.json(), async (req: Request, res: Response) => {
     try {
       const { name, scopes, tokenTtl, grantTypes, redirectUris, tokenEndpointAuthMethod } = req.body;
+      const executiveId = typeof req.body?.executiveId === 'string' ? req.body.executiveId.trim() : '';
       if (!name) { res.status(400).json({ error: 'Name required' }); return; }
+      if (!executiveId) { res.status(400).json({ error: 'executiveId required' }); return; }
       const grants = Array.isArray(grantTypes) && grantTypes.length > 0 ? grantTypes : ['client_credentials'];
       const uris = Array.isArray(redirectUris) ? redirectUris : [];
       const result = await oauthProvider.registerClientManual(
         name, grants, scopes || 'read', uris,
+        undefined,
+        undefined,
+        executiveId,
       );
       // Public client (PKCE-only, no secret): NULL out client_secret_hash and
       // set auth method so the SDK's clientAuth middleware skips the hash-vs-
@@ -943,6 +953,44 @@ export async function runServeHttp(engine: BrainEngine, options: ServeHttpOption
       res.json({ ...result, tokenTtl: tokenTtl ? Number(tokenTtl) : null });
     } catch (e) {
       res.status(500).json({ error: e instanceof Error ? e.message : 'Registration failed' });
+    }
+  });
+
+  app.get('/admin/api/clients/:id/export', requireAdmin, async (req: Request, res: Response) => {
+    try {
+      const format = String(req.query.format || 'json');
+      if (!['claude-desktop', 'cursor', 'json'].includes(format)) {
+        res.status(400).json({ error: 'invalid_format', supported: ['claude-desktop', 'cursor', 'json'] });
+        return;
+      }
+      const clientId = req.params.id;
+      if (Array.isArray(clientId)) {
+        res.status(400).json({ error: 'invalid_client_id' });
+        return;
+      }
+      const rows = await sql`
+        SELECT client_id, client_name, scope, grant_types, redirect_uris
+        FROM oauth_clients
+        WHERE client_id = ${clientId} AND deleted_at IS NULL
+      `;
+      if (rows.length === 0) {
+        res.status(404).json({ error: 'client_not_found' });
+        return;
+      }
+      const secret = typeof req.query.secret === 'string'
+        ? req.query.secret
+        : typeof req.query.client_secret === 'string'
+          ? req.query.client_secret
+          : 'PASTE_CLIENT_SECRET_HERE';
+      const baseUrl = issuerUrl.toString().replace(/\/$/, '');
+      const body = format === 'claude-desktop'
+        ? exportClaudeDesktopConfig(rows[0], secret, baseUrl)
+        : format === 'cursor'
+          ? exportCursorConfig(rows[0], secret, baseUrl)
+          : exportGenericJson(rows[0], secret, baseUrl);
+      res.type('application/json').send(body);
+    } catch (e) {
+      res.status(500).json({ error: e instanceof Error ? e.message : 'Export failed' });
     }
   });
 

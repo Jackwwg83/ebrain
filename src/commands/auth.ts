@@ -330,13 +330,20 @@ async function revokeClient(clientId: string) {
 
 async function registerClient(name: string, args: string[]) {
   if (!name) {
-    console.error('Usage: auth register-client <name> [--grant-types G] [--scopes S] [--source SOURCE] [--federated-read SRC1,SRC2,...]');
+    console.error('Usage: auth register-client <name> --executive-id ID [--grant-types G] [--scopes S] [--source SOURCE] [--federated-read SRC1,SRC2,...]');
     process.exit(1);
   }
   const grantsIdx = args.indexOf('--grant-types');
   const scopesIdx = args.indexOf('--scopes');
   const sourceIdx = args.indexOf('--source');
   const federatedIdx = args.indexOf('--federated-read');
+  const executiveIdx = args.indexOf('--executive-id');
+  const executiveId = executiveIdx >= 0 && args[executiveIdx + 1] ? args[executiveIdx + 1].trim() : '';
+  if (!executiveId) {
+    console.error('Error: --executive-id <id> is required');
+    console.error('Usage: auth register-client <name> --executive-id ID [--grant-types G] [--scopes S] [--source SOURCE] [--federated-read SRC1,SRC2,...]');
+    process.exit(1);
+  }
   const grantTypes = grantsIdx >= 0 && args[grantsIdx + 1]
     ? args[grantsIdx + 1].split(',').map(s => s.trim()).filter(Boolean)
     : ['client_credentials'];
@@ -358,11 +365,13 @@ async function registerClient(name: string, args: string[]) {
       const provider = new GBrainOAuthProvider({ sql });
       const { clientId, clientSecret } = await provider.registerClientManual(
         name, grantTypes, scopes, [], sourceId, federatedRead,
+        executiveId,
       );
       const effectiveFederated = federatedRead && federatedRead.length > 0 ? federatedRead : [sourceId];
       console.log(`OAuth client registered: "${name}"\n`);
       console.log(`  Client ID:        ${clientId}`);
       console.log(`  Client Secret:    ${clientSecret}\n`);
+      console.log(`  Executive ID:     ${executiveId}`);
       console.log(`  Grant types:      ${grantTypes.join(', ')}`);
       console.log(`  Scopes:           ${scopes}`);
       console.log(`  Write source:     ${sourceId}`);
@@ -371,7 +380,35 @@ async function registerClient(name: string, args: string[]) {
       console.log(`Revoke with: gbrain auth revoke-client "${clientId}"`);
     });
   } catch (e: any) {
-    console.error('Error:', e.message);
+    if (e?.message === 'invalid_executive_id') {
+      console.error(`Error: executive_id '${executiveId}' not found`);
+    } else {
+      console.error('Error:', e.message);
+    }
+    process.exit(1);
+  }
+}
+
+async function bindExecutive(clientId: string, executiveId: string) {
+  if (!clientId || !executiveId) {
+    console.error('Usage: auth bind-executive <client_id> <executive_id>');
+    process.exit(1);
+  }
+  try {
+    await withConfiguredSql(async (sql) => {
+      const { bindExecutiveToClient } = await import('../ebrain/sso/bind-executive.ts');
+      const result = await bindExecutiveToClient(sql, clientId, executiveId);
+      console.log(`OAuth client bound: ${result.clientId}`);
+      console.log(`  Executive ID: ${result.executiveId}`);
+    });
+  } catch (e: any) {
+    if (e?.message === 'invalid_executive_id') {
+      console.error(`Error: executive_id '${executiveId}' not found`);
+    } else if (e?.message === 'invalid_client_id') {
+      console.error(`Error: client_id '${clientId}' not found`);
+    } else {
+      console.error('Error:', e.message);
+    }
     process.exit(1);
   }
 }
@@ -402,6 +439,7 @@ export async function runAuth(args: string[]): Promise<void> {
       return;
     }
     case 'register-client': await registerClient(rest[0], rest.slice(1)); return;
+    case 'bind-executive': await bindExecutive(rest[0], rest[1]); return;
     case 'revoke-client': await revokeClient(rest[0]); return;
     case 'test': {
       const tokenIdx = rest.indexOf('--token');
@@ -424,8 +462,10 @@ Usage:
   gbrain auth permissions <name> set-takes-holders <h1,h2,h3>
                                                           Update visibility for an existing token
   gbrain auth register-client <name> [options]             Register an OAuth 2.1 client (v0.26+)
+     --executive-id <id>                                   Required executive binding
      --grant-types <client_credentials,authorization_code> (default: client_credentials)
      --scopes "<read write admin>"                         (default: read)
+  gbrain auth bind-executive <client_id> <executive_id>    Bind an OAuth client to an executive
   gbrain auth revoke-client <client_id>                   Hard-delete an OAuth 2.1 client (cascades to tokens + codes)
   gbrain auth test <url> --token <token>                  Smoke-test a remote MCP server
 `);
