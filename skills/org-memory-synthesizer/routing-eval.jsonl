@@ -1,0 +1,12 @@
+{"intent": "please use org memory synthesizer for this executive request", "expected_skill": "org-memory-synthesizer"}
+{"intent": "route this enterprise workflow to org memory synthesizer with evidence", "expected_skill": "org-memory-synthesizer"}
+{"intent": "I need org memory synthesizer output for the next review", "expected_skill": "org-memory-synthesizer"}
+{"intent": "prepare org memory synthesizer markdown with data gaps marked", "expected_skill": "org-memory-synthesizer"}
+{"intent": "build a org memory synthesizer draft from facts and takes", "expected_skill": "org-memory-synthesizer"}
+{"intent": "run org memory synthesizer planning without adding dependencies", "expected_skill": "org-memory-synthesizer"}
+{"intent": "create org memory synthesizer synthesis for the requested period", "expected_skill": "org-memory-synthesizer"}
+{"intent": "use org memory synthesizer and keep source attribution intact", "expected_skill": "org-memory-synthesizer"}
+{"intent": "generate org memory synthesizer filing under the documented namespace", "expected_skill": "org-memory-synthesizer"}
+{"intent": "make org memory synthesizer respect executive scope and source ids", "expected_skill": "org-memory-synthesizer"}
+{"intent": "open the org memory synthesizer shell skill for this task", "expected_skill": "org-memory-synthesizer"}
+{"intent": "apply org memory synthesizer routing rather than a generic query", "expected_skill": "org-memory-synthesizer"}

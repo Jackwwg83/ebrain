@@ -59,7 +59,7 @@ This is the dispatcher. Skills are the implementation. **Read the skill file bef
 | "Skillify this", "is this a skill?", "make this proper" | `skills/skillify/SKILL.md` |
 | "Compress my resolver", "AGENTS.md too large", "RESOLVER.md too big", "functional area dispatcher", "shrink routing table" | `skills/functional-area-resolver/SKILL.md` |
 | "Is gbrain healthy?", morning health check, skillpack-check | `skills/skillpack-check/SKILL.md` |
-| "harvest this skill into gbrain", "publish this skill to gbrain", "lift this skill upstream", "share this skill with other gbrain clients", "promote my skill to gbrain" | `skills/skillpack-harvest/SKILL.md` |
+| "harvest this skill into gbrain", "publish this skill to gbrain", "lift this skill upstream", "share this skill with other gbrain clients", "promote my skill to gbrain", "skill back into gbrain", "skill upstream", "gbrain bundle", "skill into gbrain", "skill to gbrain", "custom skill into the gbrain core" | `skills/skillpack-harvest/SKILL.md` |
 | Post-restart health + auto-fix, "did the container restart break anything", smoke test | `skills/smoke-test/SKILL.md` |
 | Cross-modal review, second opinion | `skills/cross-modal-review/SKILL.md` |
 | "Validate skills", skill health check | `skills/testing/SKILL.md` |
@@ -125,3 +125,19 @@ These apply to ALL brain-writing skills:
 | "verify this academic claim", "check this study", "academic verify", "validate citation", "is this study real" | `skills/academic-verify/SKILL.md` |
 | "make pdf from brain", "brain pdf", "convert brain page to pdf", "publish this page as pdf", "export brain page" | `skills/brain-pdf/SKILL.md` |
 | "voice note", "ingest this voice memo", "transcribe and file", "voice note ingest", "save this audio note" | `skills/voice-note-ingest/SKILL.md` |
+
+| "executive daily brief", "give me today brief", "generate today executive brief", "morning brief for CEO" | `skills/executive-daily-brief/SKILL.md` |
+
+| "enterprise risk signal", "risk signal detector", "show revenue churn risks", "detect cross source conflicts" | `skills/risk-signal-detector/SKILL.md` |
+
+| "customer escalation radar", "high value customer risk", "customer churn warning", "customer health radar" | `skills/customer-escalation-radar/SKILL.md` |
+
+| "board deck generator", "draft board deck section", "quarterly board narrative", "board meeting section" | `skills/board-deck-generator/SKILL.md` |
+
+| "forecast variance explainer", "explain plan actual variance", "variance root cause", "why forecast missed" | `skills/forecast-variance-explainer/SKILL.md` |
+
+| "competitor move monitor", "competitive intelligence pulse", "track competitor move", "market competitor update" | `skills/competitor-move-monitor/SKILL.md` |
+
+| "capital allocation advisor", "capital allocation tradeoff", "cfo allocation sketch", "budget tradeoff memo" | `skills/capital-allocation-advisor/SKILL.md` |
+
+| "org memory synthesizer", "cross team memory synthesis", "synthesize org memory", "team decision memory" | `skills/org-memory-synthesizer/SKILL.md` |

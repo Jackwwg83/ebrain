@@ -1,0 +1,22 @@
+{"intent": "please prepare an executive daily brief for the CEO before the standup", "expected_skill": "executive-daily-brief"}
+{"intent": "run an executive daily brief using today revenue and risk signals", "expected_skill": "executive-daily-brief"}
+{"intent": "I need an executive daily brief for this morning operating review", "expected_skill": "executive-daily-brief"}
+{"intent": "create an executive daily brief with customer escalation notes", "expected_skill": "executive-daily-brief"}
+{"intent": "draft an executive daily brief for the CFO with pipeline context", "expected_skill": "executive-daily-brief"}
+{"intent": "send an executive daily brief plan for the local business date", "expected_skill": "executive-daily-brief"}
+{"intent": "make an executive daily brief focused on churn and team blockers", "expected_skill": "executive-daily-brief"}
+{"intent": "assemble an executive daily brief from facts and recent takes", "expected_skill": "executive-daily-brief"}
+{"intent": "use the enterprise sources to build an executive daily brief", "expected_skill": "executive-daily-brief"}
+{"intent": "give leadership an executive daily brief with cross-team focus", "expected_skill": "executive-daily-brief"}
+{"intent": "prepare executive daily brief coverage for risk revenue and ops", "expected_skill": "executive-daily-brief"}
+{"intent": "turn the morning job evidence into an executive daily brief", "expected_skill": "executive-daily-brief"}
+{"intent": "need executive daily brief markdown for the chief operating review", "expected_skill": "executive-daily-brief"}
+{"intent": "build executive daily brief sections from recalled facts", "expected_skill": "executive-daily-brief"}
+{"intent": "produce executive daily brief for the Asia business date", "expected_skill": "executive-daily-brief"}
+{"intent": "summarize support and CRM deltas in an executive daily brief", "expected_skill": "executive-daily-brief"}
+{"intent": "generate an executive daily brief with explicit data gaps", "expected_skill": "executive-daily-brief"}
+{"intent": "make the executive daily brief include sales revenue posture", "expected_skill": "executive-daily-brief"}
+{"intent": "compile executive daily brief with recent takes from team leads", "expected_skill": "executive-daily-brief"}
+{"intent": "write executive daily brief output for briefs daily filing", "expected_skill": "executive-daily-brief"}
+{"intent": "draft executive daily brief but do not swap the E2 job stub yet", "expected_skill": "executive-daily-brief"}
+{"intent": "route this morning fanout payload to executive daily brief skill", "expected_skill": "executive-daily-brief"}

@@ -1,0 +1,22 @@
+{"intent": "scan enterprise risk signal evidence for the last day", "expected_skill": "risk-signal-detector"}
+{"intent": "prepare an enterprise risk signal report from conflicts and anomalies", "expected_skill": "risk-signal-detector"}
+{"intent": "rank each enterprise risk signal for executive escalation", "expected_skill": "risk-signal-detector"}
+{"intent": "find enterprise risk signal items hiding in facts and recent takes", "expected_skill": "risk-signal-detector"}
+{"intent": "show enterprise risk signal candidates sorted by severity", "expected_skill": "risk-signal-detector"}
+{"intent": "build enterprise risk signal markdown for the risk namespace", "expected_skill": "risk-signal-detector"}
+{"intent": "check enterprise risk signal coverage for churn and delivery misses", "expected_skill": "risk-signal-detector"}
+{"intent": "turn detect conflicts output into an enterprise risk signal list", "expected_skill": "risk-signal-detector"}
+{"intent": "review anomalies and recall rows as enterprise risk signal evidence", "expected_skill": "risk-signal-detector"}
+{"intent": "make an enterprise risk signal brief for the COO", "expected_skill": "risk-signal-detector"}
+{"intent": "compile enterprise risk signal next steps with owners", "expected_skill": "risk-signal-detector"}
+{"intent": "use enterprise risk signal detector for customer escalation and KPI movement", "expected_skill": "risk-signal-detector"}
+{"intent": "summarize enterprise risk signal gaps when sources are disconnected", "expected_skill": "risk-signal-detector"}
+{"intent": "create enterprise risk signal triage for the executive team", "expected_skill": "risk-signal-detector"}
+{"intent": "sort enterprise risk signal rows critical high medium low", "expected_skill": "risk-signal-detector"}
+{"intent": "investigate enterprise risk signal from revenue churn hints", "expected_skill": "risk-signal-detector"}
+{"intent": "prepare enterprise risk signal page under signals risk", "expected_skill": "risk-signal-detector"}
+{"intent": "group enterprise risk signal evidence without losing contradictions", "expected_skill": "risk-signal-detector"}
+{"intent": "write enterprise risk signal action list from recent facts", "expected_skill": "risk-signal-detector"}
+{"intent": "run enterprise risk signal scan for a 24h window", "expected_skill": "risk-signal-detector"}
+{"intent": "focus enterprise risk signal output on next actions", "expected_skill": "risk-signal-detector"}
+{"intent": "check enterprise risk signal items for holder attribution issues", "expected_skill": "risk-signal-detector"}

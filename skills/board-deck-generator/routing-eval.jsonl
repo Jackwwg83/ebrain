@@ -1,0 +1,12 @@
+{"intent": "please use board deck generator for this executive request", "expected_skill": "board-deck-generator"}
+{"intent": "route this enterprise workflow to board deck generator with evidence", "expected_skill": "board-deck-generator"}
+{"intent": "I need board deck generator output for the next review", "expected_skill": "board-deck-generator"}
+{"intent": "prepare board deck generator markdown with data gaps marked", "expected_skill": "board-deck-generator"}
+{"intent": "build a board deck generator draft from facts and takes", "expected_skill": "board-deck-generator"}
+{"intent": "run board deck generator planning without adding dependencies", "expected_skill": "board-deck-generator"}
+{"intent": "create board deck generator synthesis for the requested period", "expected_skill": "board-deck-generator"}
+{"intent": "use board deck generator and keep source attribution intact", "expected_skill": "board-deck-generator"}
+{"intent": "generate board deck generator filing under the documented namespace", "expected_skill": "board-deck-generator"}
+{"intent": "make board deck generator respect executive scope and source ids", "expected_skill": "board-deck-generator"}
+{"intent": "open the board deck generator shell skill for this task", "expected_skill": "board-deck-generator"}
+{"intent": "apply board deck generator routing rather than a generic query", "expected_skill": "board-deck-generator"}

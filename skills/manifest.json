@@ -218,6 +218,46 @@
       "name": "functional-area-resolver",
       "path": "functional-area-resolver/SKILL.md",
       "description": "Compress an agent's routing file (RESOLVER.md or AGENTS.md) by replacing skill-per-row tables with functional-area dispatcher entries. Two-layer dispatch keeps every sub-skill reachable at ~50% of the file size."
+    },
+    {
+      "name": "executive-daily-brief",
+      "path": "executive-daily-brief/SKILL.md",
+      "description": "C-Level morning brief generator with risk, revenue, and ops cross-section for an enterprise executive."
+    },
+    {
+      "name": "risk-signal-detector",
+      "path": "risk-signal-detector/SKILL.md",
+      "description": "Cross-source risk signal aggregator for executive escalation across facts, takes, conflicts, and anomalies."
+    },
+    {
+      "name": "customer-escalation-radar",
+      "path": "customer-escalation-radar/SKILL.md",
+      "description": "High-value customer health and escalation early-warning system using customer facts, takes, experts, and recent activity."
+    },
+    {
+      "name": "board-deck-generator",
+      "path": "board-deck-generator/SKILL.md",
+      "description": "Quarterly board deck section drafter for evidence-backed CEO/CFO narrative sections."
+    },
+    {
+      "name": "forecast-variance-explainer",
+      "path": "forecast-variance-explainer/SKILL.md",
+      "description": "Plan-vs-actual variance root cause assistant for revenue, cost, hiring, and operating metrics."
+    },
+    {
+      "name": "competitor-move-monitor",
+      "path": "competitor-move-monitor/SKILL.md",
+      "description": "Competitive intelligence pulse from public and enterprise-adjacent signals."
+    },
+    {
+      "name": "capital-allocation-advisor",
+      "path": "capital-allocation-advisor/SKILL.md",
+      "description": "Capital allocation tradeoff sketch for CFO and CEO operating decisions."
+    },
+    {
+      "name": "org-memory-synthesizer",
+      "path": "org-memory-synthesizer/SKILL.md",
+      "description": "Cross-team org memory synthesis from meetings, decisions, and repeated take patterns."
     }
   ],
   "dependencies": {

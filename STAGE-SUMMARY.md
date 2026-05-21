@@ -2083,3 +2083,93 @@ STAGE-SUMMARY.md
 - Test changes: `tests/ebrain/oauth/register-client-executive-required.test.ts` now verifies core NULL compatibility plus wrapper missing/unknown/valid executive behavior; DCR NULL compatibility remains covered.
 - Evidence: `bun test test/oauth.test.ts 2>&1 | tail -10` -> 71 pass, 0 fail, 298 expect() calls; `bun test tests/ebrain/oauth/ 2>&1 | tail -10` -> 18 pass, 0 fail, 65 expect() calls; `bun run typecheck` exited 0; `bun run verify` exited 0.
 - Charter check: `git diff --stat b9bec8b9 -- 'src/core/' 'src/mcp/'` shows only `src/core/oauth-provider.ts` with 6 insertions/2 deletions for the optional branch; `src/mcp/*` remains untouched; `src/cli.ts` has 0 deletion lines relative to `b9bec8b9`.
+
+# Stage I1: Enterprise Skills + routing-eval
+
+## Status
+
+- Stage: I1
+- Branch: `ebrain-mvp`
+- Baseline: `3eb7df61`
+- Scope: 8 enterprise skills scaffolded with `gbrain skillify scaffold` flow, 3 full skill implementations, 5 thin-shell skills, routing fixtures, placeholder tests, and skill resolver wiring.
+- Result: PASS locally. E2 brief job stub remains unchanged by PM decision; I1 only builds the agent-routable skill surface.
+
+## Implementation
+
+- Ran `./bin/gbrain skillify scaffold <skill> --force --description ...` for all 8 skills because Stage A1 placeholders already existed; the v0.36.0 missing-description contract was verified separately with exit 2.
+- `skills/executive-daily-brief/SKILL.md`: full 149-line skill for C-level morning briefs with required sections `今日要点`, `风险信号`, `销售/营收态势`, and `跨团队焦点`, plus filing to `briefs/daily/`.
+- `skills/risk-signal-detector/SKILL.md`: full 147-line skill for conflict/anomaly/fact/take risk aggregation with severity rubric and filing to `signals/risk/`.
+- `skills/customer-escalation-radar/SKILL.md`: full 142-line skill for high-value customer health radar with risk-score table contract and filing to `signals/customer/`.
+- The 3 full scripts under `skills/*/scripts/*.mjs` are executable deterministic subagent planners. They return `{skill, model, operations, subagent, filing, markdown}` and use `claude-sonnet-4-6` in the returned subagent payload.
+- `board-deck-generator`, `forecast-variance-explainer`, `competitor-move-monitor`, `capital-allocation-advisor`, and `org-memory-synthesizer` are 131-line thin-shell skills with real frontmatter, trigger boundaries, filing rules, future workflow, and intentionally retained `.mjs` placeholders.
+- Added routing fixtures: 22 each for the 3 full skills, 12 each for the 5 shell skills.
+- Added 8 focused tests under `test/<skill>.test.ts`; full-skill tests assert script output shape and shell-skill tests assert placeholders remain intentionally unimplemented.
+- Updated `skills/RESOLVER.md` rows for the 8 new skills and broadened the existing `skillpack-harvest` resolver row so pre-existing routing fixtures no longer fail global `routing-eval`.
+- Updated `skills/manifest.json` so `check-resolvable` counts all 8 enterprise skills as reachable in this repo, whose existing manifest is still present.
+
+## Verification Evidence
+
+| Check | Result | Evidence |
+|---|---|---|
+| Start state | PASS | `git status --short` was clean; branch `ebrain-mvp`; `git rev-parse --short HEAD` -> `3eb7df61` |
+| Missing description contract | PASS | `./bin/gbrain skillify scaffold missing-description-probe` exited `2` and printed `Error: --description is required.` |
+| Scaffold output | PASS | Each of the 8 scaffold commands wrote/overwrote `SKILL.md`, created `scripts/<name>.mjs`, `routing-eval.jsonl`, `test/<name>.test.ts`, and appended one resolver row |
+| Skill line counts | PASS | Full skills: 149 / 147 / 142 lines; shell skills: 131 lines each; no `SKILLIFY_STUB` remains in any of the 8 `SKILL.md` files |
+| Routing fixtures | PASS | Full skills have 22 JSONL fixtures each; shell skills have 12 JSONL fixtures each |
+| Focused skill tests | PASS | `bun test test/executive-daily-brief.test.ts test/risk-signal-detector.test.ts test/customer-escalation-radar.test.ts test/board-deck-generator.test.ts test/forecast-variance-explainer.test.ts test/competitor-move-monitor.test.ts test/capital-allocation-advisor.test.ts test/org-memory-synthesizer.test.ts` -> 8 pass, 0 fail, 22 expect() calls |
+| Runtime script output | PASS | `bun skills/executive-daily-brief/scripts/executive-daily-brief.mjs --markdown ...` produced all 4 required markdown sections with a realistic CRM/support sample; risk/customer scripts produced JSON/table artifacts with operation plans |
+| routing-eval | PASS | `bun src/cli.ts routing-eval --json` -> `ok:true`, 203/203 passed, top1Accuracy `1`, missed `0`, ambiguous `0`, lint `0`; executive-daily-brief 22/22 passed |
+| check-resolvable | PASS | `bun src/cli.ts check-resolvable --json` -> errors `0`, total skills `51`, reachable `51`, unreachable `0`; warnings are advisory for the intentionally retained 5 shell script placeholders and enterprise filing namespaces not yet listed in `_brain-filing-rules.json` |
+| skillpack-check | PASS | `bun src/cli.ts skillpack-check --json` -> `healthy:true`, summary `gbrain skillpack healthy`; doctor surfaced the same advisory resolver warnings but no failing action |
+| Typecheck | PASS | `bun run typecheck` -> `tsc --noEmit` exited 0 |
+| Full verify | PASS | `bun run verify` -> privacy, proposal PII, test names, JSONB, source-id projection, progress, isolation, WASM, admin build, admin scope, CLI executable, system-of-record, eval glossary, synthetic corpus privacy, and typecheck all passed |
+| Charter v2 core/mcp guard | PASS | `git diff --stat 3eb7df61 -- 'src/core/' 'src/mcp/'` returned empty; no `src/commands/` or `src/ebrain/` files changed |
+| Dependency/schema guard | PASS | No `package.json`, lockfile, or migration files changed; no `bun add` was run |
+
+## Files Changed
+
+```text
+skills/RESOLVER.md
+skills/manifest.json
+skills/executive-daily-brief/SKILL.md
+skills/executive-daily-brief/scripts/executive-daily-brief.mjs
+skills/executive-daily-brief/routing-eval.jsonl
+skills/risk-signal-detector/SKILL.md
+skills/risk-signal-detector/scripts/risk-signal-detector.mjs
+skills/risk-signal-detector/routing-eval.jsonl
+skills/customer-escalation-radar/SKILL.md
+skills/customer-escalation-radar/scripts/customer-escalation-radar.mjs
+skills/customer-escalation-radar/routing-eval.jsonl
+skills/board-deck-generator/SKILL.md
+skills/board-deck-generator/scripts/board-deck-generator.mjs
+skills/board-deck-generator/routing-eval.jsonl
+skills/forecast-variance-explainer/SKILL.md
+skills/forecast-variance-explainer/scripts/forecast-variance-explainer.mjs
+skills/forecast-variance-explainer/routing-eval.jsonl
+skills/competitor-move-monitor/SKILL.md
+skills/competitor-move-monitor/scripts/competitor-move-monitor.mjs
+skills/competitor-move-monitor/routing-eval.jsonl
+skills/capital-allocation-advisor/SKILL.md
+skills/capital-allocation-advisor/scripts/capital-allocation-advisor.mjs
+skills/capital-allocation-advisor/routing-eval.jsonl
+skills/org-memory-synthesizer/SKILL.md
+skills/org-memory-synthesizer/scripts/org-memory-synthesizer.mjs
+skills/org-memory-synthesizer/routing-eval.jsonl
+test/executive-daily-brief.test.ts
+test/risk-signal-detector.test.ts
+test/customer-escalation-radar.test.ts
+test/board-deck-generator.test.ts
+test/forecast-variance-explainer.test.ts
+test/competitor-move-monitor.test.ts
+test/capital-allocation-advisor.test.ts
+test/org-memory-synthesizer.test.ts
+STAGE-SUMMARY.md
+```
+
+## Runtime Notes
+
+- I1 intentionally does not swap `src/ebrain/jobs/generate-brief-stub.ts`; J1/J-stage job-runner wiring should bridge the in-process E2 handler to the skill surface later.
+- Full skill scripts are deterministic planners rather than live LLM callers. They expose the intended `claude-sonnet-4-6` subagent payload and can be wired to Minions/job-runner later without touching gbrain core.
+- The 5 shell `.mjs` files retain the scaffold sentinel by design; default `check-resolvable` treats this as advisory, while `--strict` would fail until a later stage implements them.
+- Enterprise output namespaces such as `briefs/daily/` and `signals/risk/` are documented in skill frontmatter per I1 spec; `_brain-filing-rules.md` and its JSON companion were not changed in this stage.
+- The repo does not have a `gbrain` binary on PATH in this shell. `./bin/gbrain` was used for scaffold/routing probes, and `bun src/cli.ts` was used for final `routing-eval`, `check-resolvable`, and `skillpack-check` evidence.

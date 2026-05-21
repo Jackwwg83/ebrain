@@ -1,0 +1,12 @@
+{"intent": "please use competitor move monitor for this executive request", "expected_skill": "competitor-move-monitor"}
+{"intent": "route this enterprise workflow to competitor move monitor with evidence", "expected_skill": "competitor-move-monitor"}
+{"intent": "I need competitor move monitor output for the next review", "expected_skill": "competitor-move-monitor"}
+{"intent": "prepare competitor move monitor markdown with data gaps marked", "expected_skill": "competitor-move-monitor"}
+{"intent": "build a competitor move monitor draft from facts and takes", "expected_skill": "competitor-move-monitor"}
+{"intent": "run competitor move monitor planning without adding dependencies", "expected_skill": "competitor-move-monitor"}
+{"intent": "create competitor move monitor synthesis for the requested period", "expected_skill": "competitor-move-monitor"}
+{"intent": "use competitor move monitor and keep source attribution intact", "expected_skill": "competitor-move-monitor"}
+{"intent": "generate competitor move monitor filing under the documented namespace", "expected_skill": "competitor-move-monitor"}
+{"intent": "make competitor move monitor respect executive scope and source ids", "expected_skill": "competitor-move-monitor"}
+{"intent": "open the competitor move monitor shell skill for this task", "expected_skill": "competitor-move-monitor"}
+{"intent": "apply competitor move monitor routing rather than a generic query", "expected_skill": "competitor-move-monitor"}

@@ -1,0 +1,22 @@
+{"intent": "run customer escalation radar for strategic accounts this week", "expected_skill": "customer-escalation-radar"}
+{"intent": "prepare customer escalation radar table with risk scores", "expected_skill": "customer-escalation-radar"}
+{"intent": "use customer escalation radar to find renewal threats", "expected_skill": "customer-escalation-radar"}
+{"intent": "build customer escalation radar from support facts and takes", "expected_skill": "customer-escalation-radar"}
+{"intent": "show customer escalation radar for high value accounts", "expected_skill": "customer-escalation-radar"}
+{"intent": "create customer escalation radar markdown for signals customer", "expected_skill": "customer-escalation-radar"}
+{"intent": "rank accounts in customer escalation radar by churn indicators", "expected_skill": "customer-escalation-radar"}
+{"intent": "scan customer escalation radar inputs for NPS and ticket spikes", "expected_skill": "customer-escalation-radar"}
+{"intent": "generate customer escalation radar with account owner actions", "expected_skill": "customer-escalation-radar"}
+{"intent": "summarize customer escalation radar coverage gaps", "expected_skill": "customer-escalation-radar"}
+{"intent": "make customer escalation radar for enterprise segment", "expected_skill": "customer-escalation-radar"}
+{"intent": "turn CRM and support facts into customer escalation radar rows", "expected_skill": "customer-escalation-radar"}
+{"intent": "prepare customer escalation radar before exec customer review", "expected_skill": "customer-escalation-radar"}
+{"intent": "use customer escalation radar to identify sponsor risk", "expected_skill": "customer-escalation-radar"}
+{"intent": "write customer escalation radar table with recommended action", "expected_skill": "customer-escalation-radar"}
+{"intent": "run customer escalation radar on a seven day window", "expected_skill": "customer-escalation-radar"}
+{"intent": "build customer escalation radar using find experts ownership", "expected_skill": "customer-escalation-radar"}
+{"intent": "check customer escalation radar for high value customer risk", "expected_skill": "customer-escalation-radar"}
+{"intent": "create customer escalation radar without exposing raw customer payloads", "expected_skill": "customer-escalation-radar"}
+{"intent": "route customer health request to customer escalation radar", "expected_skill": "customer-escalation-radar"}
+{"intent": "draft customer escalation radar sorted by risk score", "expected_skill": "customer-escalation-radar"}
+{"intent": "compile customer escalation radar from redacted account labels", "expected_skill": "customer-escalation-radar"}
