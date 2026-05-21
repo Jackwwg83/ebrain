@@ -1783,3 +1783,73 @@ STAGE-SUMMARY.md
 - M-001 wiring: `dream-cycle-enterprise.ts` passes phase-1 `changedSlugs` into phase 2 alias refresh and phase 5 compiled-truth refresh, so an empty changed scan no longer causes alias or compiled-truth writes.
 - L-001: removed the TS-side SHA-256 `computeShard()` helper/export; `shard.test.ts` now verifies the production `hashtext` path by inserting 10000 PGLite pages and reading each shard through `listSlugsInShard`.
 - Evidence: `bun run typecheck` exited 0; `bun test tests/ebrain/cycle/ tests/ebrain/jobs/` -> 14 pass, 0 fail, 64 expect() calls; `bun run verify` exited 0; `grep -rn "computeShard" src/` returned empty; `git diff a081a024 -- 'src/core/' 'src/mcp/' --stat` returned empty.
+
+# Stage E1: Executives CRUD + Profile Loader
+
+## Status
+
+- Stage: E1
+- Branch: `ebrain-mvp`
+- Baseline: `7823e548`
+- Scope: executives CRUD, DB-backed `loadExecutiveProfile`, prompt assembly from executive-local files, CLI entrypoint, and I-07 sync-exclusion documentation.
+- Result: PASS locally. E1 keeps the v200 schema unchanged and does not touch `src/core/` or `src/mcp/`.
+
+## Implementation
+
+- `src/ebrain/executives/derive-paths.ts`: added `derivePathsFromSoulPath(soulPath, executiveId)` for the PM-approved convention: `SOUL.md` siblings derive `AGENT_PERSONA.md`, `USER.md`, `preferences.yml`, `personal-skills/`, and `subagentName = executive_id`.
+- `src/ebrain/executives/load-profile.ts`: replaced the A4 null stub with a real `SELECT ... FROM executives WHERE executive_id = $1 AND deleted_at IS NULL`; retained `_setLoadExecutiveProfileForTest`.
+- `src/ebrain/executives/create.ts` and `src/ebrain/executives/update.ts`: added insert/update helpers with JSONB/text-array binding, `deleted_at IS NULL` update guard, and `updated_at = now()`.
+- `src/ebrain/executives/load-prompt.ts`: added filesystem-only prompt assembly in the required order: SOUL -> USER -> AGENT_PERSONA -> preferences YAML block -> sorted `personal-skills/*.md` -> optional subagent body.
+- `src/ebrain/executives/soul-audit-enterprise.ts`: added `auditExecutive(engine, executiveId)` to validate the four required files: SOUL, USER, AGENT_PERSONA, and preferences.
+- `src/commands/executives.ts` and `src/cli.ts`: added `gbrain executives create/list/validate/update` via the command helper; `src/cli.ts` was append-only.
+- `src/ebrain/executives/gbrain-yml-defaults.md`: documented `sync.exclude_globs` for `executives/*/SOUL.md`, `USER.md`, `preferences.yml`, and `personal-skills/**` so personal SOUL material does not enter the brain index.
+
+## Verification Evidence
+
+| Check | Result | Evidence |
+|---|---|---|
+| Start state | PASS | `git status --short --branch` showed `## ebrain-mvp...origin/ebrain-mvp`; `git rev-parse HEAD` -> `7823e548f4fb11228e7c77f2074354e59afd7e2d`; `git branch --show-current` -> `ebrain-mvp` |
+| Derived paths | PASS | `bun test tests/ebrain/executives/` includes `derive-paths.test.ts`; `executives/ceo/SOUL.md` derives `executives/ceo/AGENT_PERSONA.md`, `USER.md`, `preferences.yml`, `personal-skills/`, and `subagentName: ceo` |
+| DB-backed profile loader | PASS | `load-profile.test.ts` inserts a real PGLite v200 `executives` row, calls `loadExecutiveProfile`, verifies derived paths and `pushPreferences`, verifies soft-deleted rows return `null`, and verifies `_setLoadExecutiveProfileForTest` still works |
+| CRUD helpers | PASS | `create.test.ts` verifies INSERT plus lower(email) uniqueness; `update.test.ts` verifies patch persistence, `updated_at` bump, deputies text-array roundtrip, and deleted-row update guard |
+| Prompt assembly | PASS | `load-prompt.test.ts` verifies order `SOUL -> USER -> AGENT_PERSONA -> PREFERENCES -> personal-skills`, sorted skills, no `HEARTBEAT.md`, missing preferences default `{}`, and >5 skill cap with `MORE` marker |
+| Soul audit | PASS | `soul-audit-enterprise.test.ts` verifies the four required files pass and missing `preferences.yml` fails |
+| CLI runtime path | PASS | Temp PGLite brain at `/private/tmp/ebrain-e1-cli.X868kt`: `gbrain executives create ceo --email ceo@company.com --name "测试" --role CEO --soul-path executives/ceo/SOUL.md` -> `created executive ceo`; `list` showed `ceo ceo@company.com 测试 CEO Asia/Shanghai`; `validate ceo` printed PASS for SOUL/USER/AGENT_PERSONA/PREFERENCES; `update ceo --timezone Asia/Tokyo` -> `updated executive ceo`; final `list` showed `Asia/Tokyo` |
+| Runtime DB artifact | PASS | Direct PGLite query after CLI flow returned `[{"executive_id":"ceo","email":"ceo@company.com","display_name":"测试","role":"CEO","timezone":"Asia/Tokyo","soul_path":"executives/ceo/SOUL.md","deleted_at":null}]` |
+| Focused tests | PASS | `bun test tests/ebrain/executives/` -> 14 pass, 0 fail, 37 expect() calls |
+| Typecheck | PASS | `bun run typecheck` -> `tsc --noEmit` exited 0 |
+| Full verify | PASS | `bun run verify` -> privacy, proposal PII, test names, JSONB, source-id projection, progress, isolation, WASM, admin build, admin scope, CLI executable, system-of-record, eval glossary, synthetic corpus privacy, and typecheck all passed |
+| No schema migration | PASS | No migration file was added; `executives` continues to use the existing v200 schema |
+| gbrain core/mcp untouched | PASS | `git diff 7823e548..HEAD -- 'src/core/' 'src/mcp/' --stat` returned empty |
+| `src/cli.ts` append-only guard | PASS | `git diff -- src/cli.ts | grep -cE '^-[^-]'` -> `0` deletions |
+
+## Files Changed
+
+```text
+src/commands/executives.ts
+src/cli.ts
+src/ebrain/executives/create.ts
+src/ebrain/executives/derive-paths.ts
+src/ebrain/executives/gbrain-yml-defaults.md
+src/ebrain/executives/index.ts
+src/ebrain/executives/load-profile.ts
+src/ebrain/executives/load-prompt.ts
+src/ebrain/executives/soul-audit-enterprise.ts
+src/ebrain/executives/update.ts
+tests/ebrain/executives/create.test.ts
+tests/ebrain/executives/derive-paths.test.ts
+tests/ebrain/executives/helpers.ts
+tests/ebrain/executives/load-profile.test.ts
+tests/ebrain/executives/load-prompt.test.ts
+tests/ebrain/executives/soul-audit-enterprise.test.ts
+tests/ebrain/executives/update.test.ts
+STAGE-SUMMARY.md
+```
+
+## Runtime Notes
+
+- `loadExecutivePrompt` only reads local files and parses `preferences.yml` with `src/core/yaml-lite.ts`; it does not call an LLM.
+- Relative executive paths are resolved against `process.cwd()` by default; the CLI validate path uses `sync.repo_path` when configured and falls back to the current working directory.
+- `preferences.yml` is optional for prompt assembly and renders an empty YAML block when missing; `validate` still fails when the required file is absent.
+- `personal-skills/` is a one-level scan of sorted `.md` files only. The first five are included; a `MORE` section is appended when additional files are present.
+- No production or staging brain was mutated. The runtime evidence used an isolated temporary PGLite brain and direct DB row inspection.
