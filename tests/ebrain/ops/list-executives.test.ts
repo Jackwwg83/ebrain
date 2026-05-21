@@ -63,13 +63,14 @@ describe('list_executives operation', () => {
         wecomUserId: 'wc_ceo',
         pushPreferences: {
           morning_brief: { enabled: true, channel: 'feishu' },
-          critical_signal: { enabled: true, min_severity: 3 },
+          critical_signal: { enabled: true },
           conflict_alert: { enabled: true },
         },
       });
       expect(row.soulPath).toBeUndefined();
       expect(row.preferencesPath).toBeUndefined();
       expect(row.access_policy_path).toBeUndefined();
+      expect(JSON.stringify(row)).not.toContain('min_severity');
       expect(JSON.stringify(row)).not.toContain('quiet_hours');
       expect(JSON.stringify(row)).not.toContain('08:30');
 

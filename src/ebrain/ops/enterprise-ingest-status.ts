@@ -46,7 +46,7 @@ export const enterprise_ingest_status: Operation = {
     },
   },
   handler: async (ctx, p) => {
-    if (ctx.remote === true) {
+    if (ctx.remote !== false) {
       await operationError(
         'permission_denied',
         'enterprise_ingest_status is local-only and cannot be called from a remote transport.',

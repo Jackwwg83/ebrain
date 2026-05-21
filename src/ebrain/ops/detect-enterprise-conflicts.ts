@@ -140,7 +140,7 @@ export const detect_enterprise_conflicts: Operation = {
     },
   },
   handler: async (ctx, p) => {
-    if (ctx.remote === true) {
+    if (ctx.remote !== false) {
       await operationError(
         'permission_denied',
         'detect_enterprise_conflicts is local-only and cannot be called from a remote transport.',

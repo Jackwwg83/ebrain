@@ -25,7 +25,6 @@ export interface SanitizedExecutiveProfile {
     };
     critical_signal?: {
       enabled: boolean;
-      min_severity: number;
     };
     conflict_alert?: {
       enabled: boolean;
@@ -62,7 +61,6 @@ function sanitizePushPreferences(
   if (criticalSignal) {
     out.critical_signal = {
       enabled: criticalSignal.enabled,
-      min_severity: criticalSignal.min_severity,
     };
   }
 

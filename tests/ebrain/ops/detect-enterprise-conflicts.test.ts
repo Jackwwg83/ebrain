@@ -19,6 +19,17 @@ function makeCtx(engine: OperationContext['engine'], remote: boolean): Operation
   };
 }
 
+function makeCtxWithUndefinedRemote(engine: OperationContext['engine']): OperationContext {
+  return {
+    engine,
+    config: { engine: 'pglite' },
+    logger: logger(),
+    dryRun: false,
+    remote: undefined,
+    sourceId: 'enterprise',
+  } as unknown as OperationContext;
+}
+
 async function seedEnterpriseSource(engine: OperationContext['engine']): Promise<void> {
   await engine.executeRaw(
     `INSERT INTO sources (id, name, config)
@@ -64,6 +75,17 @@ describe('detect_enterprise_conflicts operation', () => {
     let caught: unknown;
     try {
       await detect_enterprise_conflicts.handler(makeCtx({} as BrainEngine, true), {});
+    } catch (error) {
+      caught = error;
+    }
+
+    expect((caught as { code?: string }).code).toBe('permission_denied');
+  });
+
+  test('rejects direct calls when remote is undefined', async () => {
+    let caught: unknown;
+    try {
+      await detect_enterprise_conflicts.handler(makeCtxWithUndefinedRemote({} as BrainEngine), {});
     } catch (error) {
       caught = error;
     }

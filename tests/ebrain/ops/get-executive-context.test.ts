@@ -77,11 +77,12 @@ describe('get_executive_context operation', () => {
       role: 'CEO',
       pushPreferences: {
         morning_brief: { enabled: true, channel: 'feishu' },
-        critical_signal: { enabled: true, min_severity: 2 },
+        critical_signal: { enabled: true },
       },
     });
     expect(result.profile.soulPath).toBeUndefined();
     expect(result.profile.preferencesPath).toBeUndefined();
+    expect(JSON.stringify(result.profile)).not.toContain('min_severity');
     expect(JSON.stringify(result.profile)).not.toContain('quiet_hours');
     expect(JSON.stringify(result.profile)).not.toContain('08:30');
     expect(result.prompt).toContain('## SOUL');

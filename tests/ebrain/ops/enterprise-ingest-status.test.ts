@@ -19,6 +19,17 @@ function makeCtx(engine: OperationContext['engine'], remote: boolean): Operation
   };
 }
 
+function makeCtxWithUndefinedRemote(engine: OperationContext['engine']): OperationContext {
+  return {
+    engine,
+    config: { engine: 'pglite' },
+    logger: logger(),
+    dryRun: false,
+    remote: undefined,
+    sourceId: 'enterprise',
+  } as unknown as OperationContext;
+}
+
 describe('enterprise_ingest_status operation', () => {
   test('declares admin local-only scope and rejects remote callers', async () => {
     expect(enterprise_ingest_status.scope).toBe('admin');
@@ -27,6 +38,17 @@ describe('enterprise_ingest_status operation', () => {
     let caught: unknown;
     try {
       await enterprise_ingest_status.handler(makeCtx({} as BrainEngine, true), {});
+    } catch (error) {
+      caught = error;
+    }
+
+    expect((caught as { code?: string }).code).toBe('permission_denied');
+  });
+
+  test('rejects direct calls when remote is undefined', async () => {
+    let caught: unknown;
+    try {
+      await enterprise_ingest_status.handler(makeCtxWithUndefinedRemote({} as BrainEngine), {});
     } catch (error) {
       caught = error;
     }

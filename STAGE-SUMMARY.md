@@ -1873,14 +1873,14 @@ STAGE-SUMMARY.md
 - Branch: `ebrain-mvp`
 - Baseline: `ba6e2b36`
 - Scope: four enterprise Operations, operation descriptions, append-only `operations` registration, focused op tests.
-- Result: PASS locally. G1 keeps v200 schema unchanged and does not edit `src/mcp/tool-defs.ts`.
+- Result: PASS locally; reviewer R1 fixwave below clears H-001/L-001. G1 keeps v200 schema unchanged and does not edit `src/mcp/tool-defs.ts`.
 
 ## Implementation
 
-- `src/ebrain/ops/list-executives.ts`: added `list_executives` (`scope: read`, `localOnly: false`) using E1 executive loaders and returning a sanitized bot-safe profile surface. It strips local prompt paths, access-policy paths, deputies, preference file paths, `morning_brief.time`, and `critical_signal.quiet_hours`.
+- `src/ebrain/ops/list-executives.ts`: added `list_executives` (`scope: read`, `localOnly: false`) using E1 executive loaders and returning a sanitized bot-safe profile surface. It strips local prompt paths, access-policy paths, deputies, preference file paths, `morning_brief.time`, `critical_signal.min_severity`, and `critical_signal.quiet_hours`.
 - `src/ebrain/ops/get-executive-context.ts`: added `get_executive_context` (`scope: read`, `localOnly: false`) that loads a DB-backed profile, returns the sanitized profile, and assembles the prompt with `loadExecutivePrompt(profile)`. Missing ids throw `OperationError('not_found', ...)`.
-- `src/ebrain/ops/enterprise-ingest-status.ts`: added `enterprise_ingest_status` (`scope: admin`, `localOnly: true`) with an in-handler `ctx.remote === true` permission gate. It reads the confirmed v200 table `enterprise_ingest_sources` plus `enterprise_ingest_objects` page counts.
-- `src/ebrain/ops/detect-enterprise-conflicts.ts`: added `detect_enterprise_conflicts` (`scope: admin`, `localOnly: true`, `mutating: true`) with an in-handler `ctx.remote === true` permission gate. It wraps F1 `detectFactConflicts(ctx)` and post-filters counts/samples for `entity_slug` without changing the F1 contract.
+- `src/ebrain/ops/enterprise-ingest-status.ts`: added `enterprise_ingest_status` (`scope: admin`, `localOnly: true`) with a fail-closed in-handler `ctx.remote !== false` permission gate. It reads the confirmed v200 table `enterprise_ingest_sources` plus `enterprise_ingest_objects` page counts.
+- `src/ebrain/ops/detect-enterprise-conflicts.ts`: added `detect_enterprise_conflicts` (`scope: admin`, `localOnly: true`, `mutating: true`) with a fail-closed in-handler `ctx.remote !== false` permission gate. It wraps F1 `detectFactConflicts(ctx)` and post-filters counts/samples for `entity_slug` without changing the F1 contract.
 - `src/ebrain/ops/index.ts`: re-exports all four G1 operations.
 - `src/core/operations.ts`: append-only import and array registration under `// G1 (Ebrain): enterprise op surface`.
 - `src/core/operations-descriptions.ts`: append-only four description constants for the G1 ops.
@@ -1891,12 +1891,12 @@ STAGE-SUMMARY.md
 |---|---|---|
 | Start state | PASS | `git status --short --branch` showed `## ebrain-mvp...origin/ebrain-mvp`; `git rev-parse --short HEAD` -> `ba6e2b36`; `git branch --show-current` -> `ebrain-mvp` |
 | v200 ingest table confirmation | PASS | `rg -n "enterprise_ingest_sources|enterprise_fact_conflicts|executives" src/core/migrate.ts src/core/pglite-schema.ts` confirmed v200 has `enterprise_ingest_sources`, `enterprise_ingest_objects`, `enterprise_fact_conflicts`, and `executives`; no schema migration was added |
-| Focused op tests | PASS | `bun test tests/ebrain/ops/` -> 7 pass, 0 fail, 37 expect() calls |
-| Runtime list evidence | PASS | `list_executives` test inserts a real PGLite `executives` row and verifies remote=true returns one sanitized active profile with IM ids, redacted pushPreferences, no `quiet_hours`, no `morning_brief.time`, and no local path fields |
+| Focused op tests | PASS | Fixwave R1 `bun test tests/ebrain/ops/ 2>&1 \| tail -5` -> 9 pass, 0 fail, 41 expect() calls |
+| Runtime list evidence | PASS | `list_executives` test inserts a real PGLite `executives` row and verifies remote=true returns one sanitized active profile with IM ids, redacted pushPreferences, no `min_severity`, no `quiet_hours`, no `morning_brief.time`, and no local path fields |
 | Runtime prompt evidence | PASS | `get_executive_context` test assembles a real prompt from temp SOUL/USER/AGENT_PERSONA/preferences/personal-skills files and verifies the returned profile is redacted |
 | Runtime ingest evidence | PASS | `enterprise_ingest_status` test inserts a real PGLite ingest source plus objects and observes `{source_id:'dingtalk-main', source_type:'dingtalk', circuit_state:'open', page_count:1}` |
 | Runtime conflict evidence | PASS | `detect_enterprise_conflicts` test inserts conflicting enterprise facts, runs the op locally, observes `conflictsDetected=1`, `conflictsInserted=1`, sample `{entity_slug:'acme', fact_key:'arr', status:'open'}`, and directly counts one row in `enterprise_fact_conflicts` |
-| Remote trust gates | PASS | `enterprise_ingest_status` and `detect_enterprise_conflicts` tests call handlers with `ctx.remote === true` and catch `permission_denied`; read ops run with `ctx.remote === true` |
+| Remote trust gates | PASS | `enterprise_ingest_status` and `detect_enterprise_conflicts` tests call handlers with `ctx.remote === true` and `ctx.remote === undefined` and catch `permission_denied`; read ops run with `ctx.remote === true` |
 | Scope/localOnly lint | PASS | `bun test tests/ebrain/lint/scope-required.test.ts test/operations-descriptions.test.ts` -> 26 pass, 0 fail, 52 expect() calls |
 | Tool schema generation | PASS | `bun test test/mcp-tool-defs.test.ts` -> 9 pass, 0 fail, 243 expect() calls; `buildToolDefs(operations).length === operations.length` |
 | Typecheck | PASS | `bun run typecheck` -> `tsc --noEmit` exited 0 |
@@ -1925,6 +1925,14 @@ STAGE-SUMMARY.md
 ## Runtime Notes
 
 - G1 uses the existing v200 `enterprise_ingest_sources` table name rather than inventing an `enterprise_sources` table; no v201 schema or migration was added.
-- The admin local-only ops defend in depth inside the handler with strict `ctx.remote === true`; `ctx.remote === false` and casted/legacy undefined remain trusted-local behavior per the D12 convention.
+- The admin local-only ops defend in depth inside the handler with strict `ctx.remote !== false`; `ctx.remote === false` remains the only trusted-local behavior, while true/missing/undefined remote contexts are denied.
 - `detect_enterprise_conflicts` keeps the F1 detector global and uses post-filtered reporting for `entity_slug`, preserving the PM decision not to change the F1 function signature in G1.
 - `src/mcp/tool-defs.ts` remains untouched; MCP schemas flow from `buildToolDefs(operations)`.
+
+## Fixwave R1
+
+- Baseline: `52b2c4fe`; reviewer R1 `G1-H-001` and `G1-L-001` fixed in one wave.
+- H-001: `sanitizePushPreferences` now returns only `{enabled, channel}` for `morning_brief`, `{enabled}` for `critical_signal`, and `{enabled}` for `conflict_alert`; it never returns `min_severity`, `quiet_hours`, or `morning_brief.time`.
+- L-001: `enterprise_ingest_status` and `detect_enterprise_conflicts` now reject any context where `ctx.remote !== false`, so direct handler calls with omitted/undefined `remote` fail closed with `permission_denied`.
+- Runtime redaction evidence: isolated PGLite `list_executives` run returned `critical_signal: {enabled:true}` and printed `contains_min_severity=false`, `contains_quiet_hours=false`.
+- Verification: `git diff 52b2c4fe -- 'src/core/' 'src/mcp/' --stat` returned empty; `bun run typecheck` exited 0; `bun test tests/ebrain/ops/ 2>&1 | tail -5` -> 9 pass, 0 fail, 41 expect() calls; `bun run verify` exited 0.
