@@ -735,7 +735,9 @@ export class GBrainOAuthProvider implements OAuthServerProvider {
     // Pre-allowlist clients keep working (allowlist is registration-time;
     // existing rows aren't re-validated).
     assertAllowedScopes(parseScopeString(scopes));
-    const normalizedExecutiveId = await this.requireActiveExecutiveId(executiveId);
+    const normalizedExecutiveId = executiveId === undefined
+      ? undefined
+      : await this.requireActiveExecutiveId(executiveId);
 
     const clientId = generateToken('gbrain_cl_');
     const clientSecret = generateToken('gbrain_cs_');
@@ -793,7 +795,9 @@ export class GBrainOAuthProvider implements OAuthServerProvider {
       }
     }
 
-    await this.bindExecutiveToClient(clientId, normalizedExecutiveId);
+    if (normalizedExecutiveId !== undefined) {
+      await this.bindExecutiveToClient(clientId, normalizedExecutiveId);
+    }
     return { clientId, clientSecret };
   }
 

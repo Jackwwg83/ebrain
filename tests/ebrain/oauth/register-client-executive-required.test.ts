@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import { GBrainOAuthProvider } from '../../../src/core/oauth-provider.ts';
 import { sqlQueryForEngine } from '../../../src/core/sql-query.ts';
-import { runAuth } from '../../../src/commands/auth.ts';
+import { registerEbrainClient } from '../../../src/ebrain/sso/register-client.ts';
 import { withEngine } from '../executives/helpers.ts';
 
 async function seedExecutive(engine: { executeRaw: (sql: string, params?: unknown[]) => Promise<unknown[]> }) {
@@ -13,42 +13,59 @@ async function seedExecutive(engine: { executeRaw: (sql: string, params?: unknow
 }
 
 describe('G2 OAuth register-client executive binding', () => {
-  test('CLI register-client requires --executive-id before opening a DB', async () => {
-    const errors: string[] = [];
-    const originalExit = process.exit;
-    const originalError = console.error;
-    (process as unknown as { exit: (code?: number) => never }).exit = ((code?: number) => {
-      throw new Error(`exit:${code ?? 0}`);
-    }) as (code?: number) => never;
-    console.error = (...args: unknown[]) => { errors.push(args.map(String).join(' ')); };
-    try {
-      await expect(
-        runAuth(['register-client', 'agent', '--grant-types', 'client_credentials', '--scopes', 'read']),
-      ).rejects.toThrow('exit:1');
-    } finally {
-      (process as unknown as { exit: typeof originalExit }).exit = originalExit;
-      console.error = originalError;
-    }
-    expect(errors.join('\n')).toContain('--executive-id <id> is required');
-  });
-
-  test('registerClientManual rejects a missing executive_id', async () => {
+  test('registerClientManual without executive_id preserves gbrain core compatibility', async () => {
     await withEngine(async (engine) => {
       await seedExecutive(engine);
       const provider = new GBrainOAuthProvider({ sql: sqlQueryForEngine(engine) });
-      await expect(
-        provider.registerClientManual('agent', ['client_credentials'], 'read'),
-      ).rejects.toThrow('invalid_executive_id');
+      const result = await provider.registerClientManual('agent', ['client_credentials'], 'read');
+      const rows = await engine.executeRaw<{ executive_id: string | null }>(
+        `SELECT executive_id FROM oauth_clients WHERE client_id = $1`,
+        [result.clientId],
+      );
+      expect(rows[0].executive_id).toBeNull();
     });
   });
 
-  test('registerClientManual stores a valid executive_id', async () => {
+  test('registerEbrainClient rejects a missing executive_id', async () => {
     await withEngine(async (engine) => {
       await seedExecutive(engine);
       const provider = new GBrainOAuthProvider({ sql: sqlQueryForEngine(engine) });
-      const result = await provider.registerClientManual(
-        'agent', ['client_credentials'], 'read', [], 'default', undefined, 'ceo',
-      );
+      await expect(
+        registerEbrainClient(provider, engine, {
+          name: 'agent',
+          grantTypes: ['client_credentials'],
+          scopes: 'read',
+          executiveId: '   ',
+        }),
+      ).rejects.toThrow('executive_id is required for ebrain OAuth clients');
+    });
+  });
+
+  test('registerEbrainClient rejects an unknown executive_id', async () => {
+    await withEngine(async (engine) => {
+      await seedExecutive(engine);
+      const provider = new GBrainOAuthProvider({ sql: sqlQueryForEngine(engine) });
+      await expect(
+        registerEbrainClient(provider, engine, {
+          name: 'agent',
+          grantTypes: ['client_credentials'],
+          scopes: 'read',
+          executiveId: 'ghost',
+        }),
+      ).rejects.toThrow("executive 'ghost' not found");
+    });
+  });
+
+  test('registerEbrainClient stores a valid executive_id', async () => {
+    await withEngine(async (engine) => {
+      await seedExecutive(engine);
+      const provider = new GBrainOAuthProvider({ sql: sqlQueryForEngine(engine) });
+      const result = await registerEbrainClient(provider, engine, {
+        name: 'agent',
+        grantTypes: ['client_credentials'],
+        scopes: 'read',
+        executiveId: 'ceo',
+      });
       const rows = await engine.executeRaw<{ executive_id: string }>(
         `SELECT executive_id FROM oauth_clients WHERE client_id = $1`,
         [result.clientId],

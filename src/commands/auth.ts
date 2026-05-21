@@ -330,7 +330,7 @@ async function revokeClient(clientId: string) {
 
 async function registerClient(name: string, args: string[]) {
   if (!name) {
-    console.error('Usage: auth register-client <name> --executive-id ID [--grant-types G] [--scopes S] [--source SOURCE] [--federated-read SRC1,SRC2,...]');
+    console.error('Usage: auth register-client <name> [--executive-id ID] [--grant-types G] [--scopes S] [--source SOURCE] [--federated-read SRC1,SRC2,...]');
     process.exit(1);
   }
   const grantsIdx = args.indexOf('--grant-types');
@@ -338,10 +338,10 @@ async function registerClient(name: string, args: string[]) {
   const sourceIdx = args.indexOf('--source');
   const federatedIdx = args.indexOf('--federated-read');
   const executiveIdx = args.indexOf('--executive-id');
-  const executiveId = executiveIdx >= 0 && args[executiveIdx + 1] ? args[executiveIdx + 1].trim() : '';
-  if (!executiveId) {
-    console.error('Error: --executive-id <id> is required');
-    console.error('Usage: auth register-client <name> --executive-id ID [--grant-types G] [--scopes S] [--source SOURCE] [--federated-read SRC1,SRC2,...]');
+  const executiveId = executiveIdx >= 0 ? (args[executiveIdx + 1] ?? '').trim() : undefined;
+  if (executiveIdx >= 0 && !executiveId) {
+    console.error('Error: --executive-id <id> cannot be empty');
+    console.error('Usage: auth register-client <name> [--executive-id ID] [--grant-types G] [--scopes S] [--source SOURCE] [--federated-read SRC1,SRC2,...]');
     process.exit(1);
   }
   const grantTypes = grantsIdx >= 0 && args[grantsIdx + 1]
@@ -371,7 +371,7 @@ async function registerClient(name: string, args: string[]) {
       console.log(`OAuth client registered: "${name}"\n`);
       console.log(`  Client ID:        ${clientId}`);
       console.log(`  Client Secret:    ${clientSecret}\n`);
-      console.log(`  Executive ID:     ${executiveId}`);
+      if (executiveId) console.log(`  Executive ID:     ${executiveId}`);
       console.log(`  Grant types:      ${grantTypes.join(', ')}`);
       console.log(`  Scopes:           ${scopes}`);
       console.log(`  Write source:     ${sourceId}`);
@@ -381,7 +381,7 @@ async function registerClient(name: string, args: string[]) {
     });
   } catch (e: any) {
     if (e?.message === 'invalid_executive_id') {
-      console.error(`Error: executive_id '${executiveId}' not found`);
+      console.error(`Error: executive_id '${executiveId ?? ''}' not found`);
     } else {
       console.error('Error:', e.message);
     }
@@ -462,7 +462,7 @@ Usage:
   gbrain auth permissions <name> set-takes-holders <h1,h2,h3>
                                                           Update visibility for an existing token
   gbrain auth register-client <name> [options]             Register an OAuth 2.1 client (v0.26+)
-     --executive-id <id>                                   Required executive binding
+     --executive-id <id>                                   Optional executive binding
      --grant-types <client_credentials,authorization_code> (default: client_credentials)
      --scopes "<read write admin>"                         (default: read)
   gbrain auth bind-executive <client_id> <executive_id>    Bind an OAuth client to an executive

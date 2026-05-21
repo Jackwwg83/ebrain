@@ -29,6 +29,7 @@ for (const op of operations) {
 // CLI-only commands that bypass the operation layer
 const CLI_ONLY = new Set(['init', 'upgrade', 'post-upgrade', 'check-update', 'integrations', 'publish', 'check-backlinks', 'lint', 'report', 'import', 'export', 'files', 'embed', 'serve', 'call', 'config', 'doctor', 'migrate', 'eval', 'sync', 'extract', 'features', 'autopilot', 'graph-query', 'jobs', 'agent', 'apply-migrations', 'skillpack-check', 'skillpack', 'resolvers', 'integrity', 'repair-jsonb', 'orphans', 'sources', 'mounts', 'dream', 'check-resolvable', 'routing-eval', 'skillify', 'smoke-test', 'providers', 'storage', 'repos', 'code-def', 'code-refs', 'reindex-code', 'reindex-frontmatter', 'code-callers', 'code-callees', 'frontmatter', 'auth', 'friction', 'claw-test', 'book-mirror', 'takes', 'think', 'salience', 'anomalies', 'transcripts', 'models', 'remote', 'recall', 'forget', 'edges-backfill', 'cache', 'ze-switch', 'founder']);
 CLI_ONLY.add('executives');
+CLI_ONLY.add('ebrain');
 // CLI-only commands whose handlers print their own --help text. These are
 // excluded from the generic short-circuit so detailed per-command and
 // per-subcommand usage stays reachable.
@@ -41,6 +42,7 @@ const CLI_ONLY_SELF_HELP = new Set([
   'models',
   'cache',
 ]);
+CLI_ONLY_SELF_HELP.add('ebrain');
 
 async function main() {
   // Parse global flags (--quiet / --progress-json / --progress-interval)
@@ -745,6 +747,11 @@ async function handleCliOnly(command: string, args: string[]) {
     await runAuth(args);
     return;
   }
+  if (command === 'ebrain' && (!args[0] || hasHelpFlag(args))) {
+    const { ebrainAuthUsage } = await import('./commands/ebrain-auth.ts');
+    console.log(ebrainAuthUsage());
+    return;
+  }
   if (command === 'remote') {
     // Multi-topology v1 (Tier B): thin-client-only convenience commands.
     // `runRemote` self-checks for remote_mcp config and exits 1 if local-only.
@@ -1090,6 +1097,10 @@ async function handleCliOnly(command: string, args: string[]) {
       case 'executives': {
         const { runExecutives } = await import('./commands/executives.ts');
         process.exit(await runExecutives(engine, args));
+      }
+      case 'ebrain': {
+        const { runEbrainAuth } = await import('./commands/ebrain-auth.ts');
+        process.exit(await runEbrainAuth(engine, args));
       }
       case 'agent': {
         const { runAgent } = await import('./commands/agent.ts');
@@ -1606,6 +1617,7 @@ ADMIN
   features [--json] [--auto-fix]     Scan usage + recommend unused features
   autopilot [--repo] [--interval N]  Self-maintaining brain daemon
   config [show|get|set] <key> [val]  Brain config
+  ebrain register-client <name>      Register an Ebrain OAuth client
   storage status [--repo <path>]     Storage tier status and health
         [--json]                     (git-tracked vs supabase-only)
   serve                              MCP server (stdio)

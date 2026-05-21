@@ -2073,3 +2073,13 @@ STAGE-SUMMARY.md
 - OAuth client secrets remain one-time material; the export endpoint accepts `secret` or `client_secret` query input for immediate post-registration export and otherwise emits `PASTE_CLIENT_SECRET_HERE` rather than pretending the stored hash is a usable secret.
 - `src/core/types.ts` did not contain the active `AuthInfo` definition at this baseline; the existing active type in `src/core/operations.ts` already had `executiveId?`, `executiveEmail?`, and `executiveRole?`, so G2 only wires runtime population.
 - G2 adds no schema migration and does not touch `src/mcp/*`.
+
+## Fixwave R1
+
+- Baseline: `b9bec8b9`; reviewer R1 `G2-H-001` fixed by moving the Ebrain executive requirement out of the gbrain core helper contract and into an Ebrain wrapper/CLI surface.
+- Core compatibility: `registerClientManual(...)` now treats `executiveId` as optional again. Omitted `executiveId` skips executive validation/binding and leaves `oauth_clients.executive_id` as SQL NULL; provided values still go through `requireActiveExecutiveId(...)` and `bindExecutiveToClient(...)`.
+- Ebrain invariant: `src/ebrain/sso/register-client.ts` adds `registerEbrainClient(...)`, which rejects blank `executiveId`, checks `loadExecutiveProfile(engine, executiveId)`, and then calls the core helper with the validated executive id.
+- CLI split: `gbrain auth register-client` is backward-compatible again with optional `--executive-id`; `gbrain ebrain register-client <name> --executive-id <id> ...` is the Ebrain-specific path that enforces executive binding.
+- Test changes: `tests/ebrain/oauth/register-client-executive-required.test.ts` now verifies core NULL compatibility plus wrapper missing/unknown/valid executive behavior; DCR NULL compatibility remains covered.
+- Evidence: `bun test test/oauth.test.ts 2>&1 | tail -10` -> 71 pass, 0 fail, 298 expect() calls; `bun test tests/ebrain/oauth/ 2>&1 | tail -10` -> 18 pass, 0 fail, 65 expect() calls; `bun run typecheck` exited 0; `bun run verify` exited 0.
+- Charter check: `git diff --stat b9bec8b9 -- 'src/core/' 'src/mcp/'` shows only `src/core/oauth-provider.ts` with 6 insertions/2 deletions for the optional branch; `src/mcp/*` remains untouched; `src/cli.ts` has 0 deletion lines relative to `b9bec8b9`.
