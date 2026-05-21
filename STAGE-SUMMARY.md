@@ -1726,7 +1726,7 @@ STAGE-SUMMARY.md
 
 ## Implementation
 
-- `src/ebrain/cycle/shard.ts`: added `SHARD_COUNT = 8`, deterministic TS `computeShard(slug)`, shard index validation, and SQL-side `hashtext(slug)` shard listing with negative modulo normalization.
+- `src/ebrain/cycle/shard.ts`: added `SHARD_COUNT = 8`, shard index validation, and SQL-side `hashtext(slug)` shard listing with negative modulo normalization.
 - `src/ebrain/cycle/refresh-entity-aliases.ts`: added a narrow phase-2 alias refresh for entity pages in the shard from page title/frontmatter aliases into `enterprise_entity_aliases`.
 - `src/ebrain/cycle/refresh-compiled-truth.ts`: added shard-scoped entity page scan, fact grouping from `enterprise_fact_claims_view`, `chooseWinningClaim` integration, and `putPage` write-back to `frontmatter.compiled_truth`.
 - `src/ebrain/cycle/precompute-briefs.ts`: implemented the required F2 stub only; it logs `stub - awaiting E2 wire` and returns `{ briefsGenerated: 0 }`.
@@ -1739,8 +1739,8 @@ STAGE-SUMMARY.md
 | Check | Result | Evidence |
 |---|---|---|
 | Start state | PASS | `git status --short` was empty; `git rev-parse --short HEAD` -> `388231e5`; `git branch --show-current` -> `ebrain-mvp` |
-| Shard distribution | PASS | `bun test tests/ebrain/cycle/shard.test.ts` -> 3 pass, 0 fail, 20 expect() calls; 10000 mock slugs stayed within 1250 +/- 10% per shard |
-| F2 targeted tests | PASS | `bun test tests/ebrain/cycle/ tests/ebrain/jobs/` -> 13 pass, 0 fail, 63 expect() calls |
+| Shard distribution | PASS | Fixwave R1 `bun test tests/ebrain/cycle/shard.test.ts` -> 2 pass, 0 fail, 17 expect() calls; 10000 mock pages were partitioned by real PGLite/PG `hashtext` through `listSlugsInShard` and stayed within 1250 +/- 10% per shard |
+| F2 targeted tests | PASS | Fixwave R1 `bun test tests/ebrain/cycle/ tests/ebrain/jobs/` -> 14 pass, 0 fail, 64 expect() calls |
 | Runtime artifact inspection | PASS | `refresh-compiled-truth.test.ts` runs a real PGLite v200 schema, inserts an entity page plus `salesforce=120` and `erp=124` typed facts, runs `refreshCompiledTruth`, then directly reads the produced page frontmatter: `compiled_truth.arr = { value: 124, source: 'erp' }` |
 | 6 phase order and phase isolation | PASS | `dream-cycle-enterprise.test.ts` mocks all 6 phase functions, forces phase 3 to throw, and verifies observed order `phase 1 -> phase 2 -> phase 3 -> phase 4 -> phase 5 -> phase 6` with `failedPhases: 1` and later phases still counted |
 | Parent/child fan-out | PASS | `dream-cycle-enterprise.test.ts` verifies parent path submits 8 `ebrain-enterprise-cycle-shard` jobs with shard indexes 0..7 and `on_child_fail: 'continue'`; aggregation counts 7 completed and 1 failed child without blocking siblings |
@@ -1763,6 +1763,7 @@ src/ebrain/cycle/refresh-entity-aliases.ts
 src/ebrain/cycle/shard.ts
 src/ebrain/jobs/dream-cycle-enterprise.ts
 tests/ebrain/cycle/refresh-compiled-truth.test.ts
+tests/ebrain/cycle/refresh-entity-aliases.test.ts
 tests/ebrain/cycle/shard.test.ts
 tests/ebrain/jobs/dream-cycle-enterprise.test.ts
 STAGE-SUMMARY.md
@@ -1774,3 +1775,11 @@ STAGE-SUMMARY.md
 - Parent fan-out uses Minions child jobs. In the real worker path the parent first submits children and persists `childJobIds`; after child terminal transitions emit `child_done`, the parent aggregates the inbox on its next claim.
 - Phase 4 currently calls the F1 `detectFactConflicts(ctx)` as delivered. That F1 function is global rather than shard-filtered, so F2 relies on the F1 conflict-hash dedupe for repeated shard invocations until a later stage adds a shard-aware detector contract.
 - No production or staging cron traffic was exercised in this local run. The end-to-end evidence is local PGLite runtime output plus Minions fan-out/aggregation unit coverage.
+
+## Fixwave R1
+
+- Scope: fixed reviewer M-001 and L-001 only; reviewer M-002 remains a known issue because changing `detectFactConflicts(ctx)` to a shard-scoped F1 contract is out of this fixwave.
+- M-001: `refreshEntityAliases` and `refreshCompiledTruth` now accept optional `changedSlugs`; `changedSlugs: []` returns `{ aliasesRefreshed: 0 }` / `{ pagesUpdated: 0 }` before scanning or writing, while omitted `changedSlugs` preserves the original full-shard behavior.
+- M-001 wiring: `dream-cycle-enterprise.ts` passes phase-1 `changedSlugs` into phase 2 alias refresh and phase 5 compiled-truth refresh, so an empty changed scan no longer causes alias or compiled-truth writes.
+- L-001: removed the TS-side SHA-256 `computeShard()` helper/export; `shard.test.ts` now verifies the production `hashtext` path by inserting 10000 PGLite pages and reading each shard through `listSlugsInShard`.
+- Evidence: `bun run typecheck` exited 0; `bun test tests/ebrain/cycle/ tests/ebrain/jobs/` -> 14 pass, 0 fail, 64 expect() calls; `bun run verify` exited 0; `grep -rn "computeShard" src/` returned empty; `git diff a081a024 -- 'src/core/' 'src/mcp/' --stat` returned empty.

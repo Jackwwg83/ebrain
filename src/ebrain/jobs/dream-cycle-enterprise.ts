@@ -97,7 +97,7 @@ function defaultPhaseFns(): PhaseFns {
       return { slugsChanged };
     },
     async entityAliasRefresh(ctx, args) {
-      return refreshEntityAliases(ctx, { shardIdx: args.shardIdx });
+      return refreshEntityAliases(ctx, { shardIdx: args.shardIdx, changedSlugs: args.changedSlugs });
     },
     async factClaimExtraction(ctx, args) {
       return extractFactsEnterprise(ctx, {
@@ -109,7 +109,7 @@ function defaultPhaseFns(): PhaseFns {
       return detectFactConflicts(ctx);
     },
     async compiledTruthRefresh(ctx, args) {
-      return refreshCompiledTruth(ctx, { shardIdx: args.shardIdx });
+      return refreshCompiledTruth(ctx, { shardIdx: args.shardIdx, changedSlugs: args.changedSlugs });
     },
     async briefPrecompute(ctx, args) {
       return precomputeBriefs(ctx, { shardIdx: args.shardIdx });

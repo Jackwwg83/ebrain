@@ -1,4 +1,4 @@
-export { SHARD_COUNT, computeShard, listSlugsInShard } from './shard.ts';
+export { SHARD_COUNT, assertValidShardIdx, listSlugsInShard } from './shard.ts';
 export type { ListSlugsInShardOpts } from './shard.ts';
 export { extractFactsEnterprise } from './extract-facts-enterprise.ts';
 export type { ExtractFactsEnterpriseOpts, ExtractFactsEnterpriseResult } from './extract-facts-enterprise.ts';

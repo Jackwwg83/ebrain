@@ -4,6 +4,7 @@ import { SHARD_COUNT, assertValidShardIdx, shardSqlPredicate } from './shard.ts'
 
 export interface RefreshEntityAliasesOpts {
   shardIdx: number;
+  changedSlugs?: string[];
 }
 
 export interface RefreshEntityAliasesResult {
@@ -74,15 +75,28 @@ export async function refreshEntityAliases(
   opts: RefreshEntityAliasesOpts,
 ): Promise<RefreshEntityAliasesResult> {
   assertValidShardIdx(opts.shardIdx);
+  if (opts.changedSlugs && opts.changedSlugs.length === 0) {
+    return { aliasesRefreshed: 0 };
+  }
+
+  const params: unknown[] = [SHARD_COUNT, opts.shardIdx, EBRAIN_SOURCE_ID];
+  const clauses = [
+    `source_id = $3`,
+    `deleted_at IS NULL`,
+    `type IN ('person', 'company', 'deal', 'project')`,
+    shardSqlPredicate('slug'),
+  ];
+  if (opts.changedSlugs) {
+    params.push(opts.changedSlugs);
+    clauses.push(`slug = ANY($${params.length}::text[])`);
+  }
+
   const pages = await ctx.engine.executeRaw<AliasPageRow>(
     `SELECT slug, type, title, enterprise_source_type, frontmatter
        FROM pages
-      WHERE source_id = $3
-        AND deleted_at IS NULL
-        AND type IN ('person', 'company', 'deal', 'project')
-        AND ${shardSqlPredicate('slug')}
+      WHERE ${clauses.join('\n        AND ')}
       ORDER BY slug`,
-    [SHARD_COUNT, opts.shardIdx, EBRAIN_SOURCE_ID],
+    params,
   );
 
   let aliasesRefreshed = 0;

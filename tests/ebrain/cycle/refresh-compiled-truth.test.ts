@@ -139,4 +139,14 @@ describe('refreshCompiledTruth', () => {
       arr: { value: 124, source: 'erp' },
     });
   });
+
+  test('empty changedSlugs returns 0 work without writing compiled_truth', async () => {
+    const shardIdx = await pgShard('acme-example');
+    const result = await refreshCompiledTruth(ctx, { shardIdx, changedSlugs: [] });
+
+    expect(result).toEqual({ pagesUpdated: 0 });
+
+    const page = await engine.getPage('acme-example', { sourceId: 'enterprise' });
+    expect(page?.frontmatter.compiled_truth).toBeUndefined();
+  });
 });

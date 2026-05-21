@@ -6,6 +6,7 @@ import { SHARD_COUNT, assertValidShardIdx, shardSqlPredicate } from './shard.ts'
 
 export interface RefreshCompiledTruthOpts {
   shardIdx: number;
+  changedSlugs?: string[];
 }
 
 export interface RefreshCompiledTruthResult {
@@ -104,6 +105,16 @@ export async function refreshCompiledTruth(
   opts: RefreshCompiledTruthOpts,
 ): Promise<RefreshCompiledTruthResult> {
   assertValidShardIdx(opts.shardIdx);
+  if (opts.changedSlugs && opts.changedSlugs.length === 0) {
+    return { pagesUpdated: 0 };
+  }
+
+  const params: unknown[] = [SHARD_COUNT, opts.shardIdx, EBRAIN_SOURCE_ID];
+  const changedSlugClause = opts.changedSlugs
+    ? `AND p.slug = ANY($${params.length + 1}::text[])`
+    : '';
+  if (opts.changedSlugs) params.push(opts.changedSlugs);
+
   const pages = await ctx.engine.executeRaw<EntityPageRow>(
     `SELECT p.slug,
             p.type,
@@ -122,8 +133,9 @@ export async function refreshCompiledTruth(
              AND v.claim_value IS NOT NULL
         )
         AND ${shardSqlPredicate('p.slug')}
+        ${changedSlugClause}
       ORDER BY p.slug`,
-    [SHARD_COUNT, opts.shardIdx, EBRAIN_SOURCE_ID],
+    params,
   );
 
   let pagesUpdated = 0;

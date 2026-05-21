@@ -1,4 +1,3 @@
-import { createHash } from 'node:crypto';
 import type { OperationContext } from '../../core/operations.ts';
 import { EBRAIN_SOURCE_ID } from '../constants.ts';
 
@@ -6,12 +5,6 @@ export const SHARD_COUNT = 8;
 
 export interface ListSlugsInShardOpts {
   since?: Date;
-}
-
-export function computeShard(slug: string): number {
-  const digest = createHash('sha256').update(slug).digest();
-  const prefix = digest.readBigUInt64BE(0);
-  return Number(prefix % BigInt(SHARD_COUNT));
 }
 
 export function assertValidShardIdx(shardIdx: number): void {
