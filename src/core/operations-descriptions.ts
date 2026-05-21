@@ -150,3 +150,30 @@ export const CODE_REFS_DESCRIPTION =
   "numbers, not symbol-qualified edges. Use this when planning a rename or " +
   "deprecation where you need to touch every literal mention. " +
   "Returns: `{symbol, count, refs: [{slug, file, language, line, context}]}`.";
+
+// -----------------------------------------------------------------------------
+// Ebrain Stage G1 enterprise ops
+// -----------------------------------------------------------------------------
+
+export const LIST_EXECUTIVES_DESCRIPTION =
+  "List configured enterprise executives for IM bot routing. Returns only the " +
+  "profile fields needed by bot dispatch plus a redacted pushPreferences view; " +
+  "does not expose local prompt paths, preferences files, quiet hours, deputies, " +
+  "or access-policy paths. Remote MCP callers may use this read-scope operation.";
+
+export const GET_EXECUTIVE_CONTEXT_DESCRIPTION =
+  "Return one executive's redacted profile plus the assembled system prompt " +
+  "from SOUL, USER, AGENT_PERSONA, preferences, and personal-skills files. Use " +
+  "this when an IM bot or MCP client needs the bound C-level personal-agent " +
+  "context before dispatching a request.";
+
+export const ENTERPRISE_INGEST_STATUS_DESCRIPTION =
+  "Show enterprise connector sync status from enterprise_ingest_sources, " +
+  "including last sync time, last error, circuit state, and page count. " +
+  "Admin/local-only: remote transports are rejected with permission_denied.";
+
+export const DETECT_ENTERPRISE_CONFLICTS_DESCRIPTION =
+  "Run the enterprise fact-conflict detector and write conflict-ledger rows. " +
+  "Returns detected/inserted counts plus recent samples, optionally post-filtered " +
+  "by entity_slug. Admin/local-only because the detector writes to " +
+  "enterprise_fact_conflicts.";

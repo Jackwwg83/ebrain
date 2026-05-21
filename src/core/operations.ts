@@ -38,6 +38,12 @@ import {
   CODE_DEF_DESCRIPTION,
   CODE_REFS_DESCRIPTION,
 } from './operations-descriptions.ts';
+import {
+  detect_enterprise_conflicts,
+  enterprise_ingest_status,
+  get_executive_context,
+  list_executives,
+} from '../ebrain/ops/index.ts';
 
 // --- Types ---
 
@@ -3316,6 +3322,8 @@ export const operations: Operation[] = [
   code_blast, code_flow,
   // v0.34 W3b: code_traversal_cache admin clear op
   code_traversal_cache_clear,
+  // G1 (Ebrain): enterprise op surface
+  list_executives, get_executive_context, enterprise_ingest_status, detect_enterprise_conflicts,
 ];
 
 export const operationsByName = Object.fromEntries(
