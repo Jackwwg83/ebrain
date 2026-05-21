@@ -141,6 +141,161 @@ describe('runExecutiveBrief', () => {
     expect(logs.some((line) => line.includes('next_eligible_at=2026-05-21T23:00:00.000Z'))).toBe(true);
   });
 
+  test('honors morning_brief.time at Tokyo 08:00 and pushes when due', async () => {
+    loadProfile(fakeExecutiveProfile({
+      timezone: 'Asia/Tokyo',
+      pushPreferences: {
+        morning_brief: { enabled: true, time: '08:00', channel: 'dingtalk' },
+      },
+    }));
+    const { calls } = setPush({ pushed: true, skipped: false, provider: 'dingtalk', channel: 'user' });
+    const { ctx, putPages } = makeCtx();
+
+    const result = await runExecutiveBrief(ctx, {
+      executiveId: 'ceo',
+      dateUtc: new Date('2026-05-20T23:00:00.000Z'),
+    });
+
+    expect(result.pushed).toBe(true);
+    expect(result.skipped).toBeUndefined();
+    expect(result.briefSlug).toBe('briefs/daily/2026-05-21-ceo');
+    expect(calls).toHaveLength(1);
+    expect(putPages).toHaveLength(1);
+  });
+
+  test('skips before morning_brief.time at Tokyo 07:59 with nextEligibleAt', async () => {
+    loadProfile(fakeExecutiveProfile({
+      timezone: 'Asia/Tokyo',
+      pushPreferences: {
+        morning_brief: { enabled: true, time: '08:00', channel: 'dingtalk' },
+      },
+    }));
+    const { calls } = setPush({ pushed: true, skipped: false });
+    const { ctx, putPages, logs } = makeCtx();
+
+    const result = await runExecutiveBrief(ctx, {
+      executiveId: 'ceo',
+      dateUtc: new Date('2026-05-20T22:59:00.000Z'),
+    });
+
+    expect(result).toEqual({
+      pushed: false,
+      skipped: 'before_scheduled_time',
+      nextEligibleAt: '2026-05-20T23:00:00.000Z',
+    });
+    expect(calls).toHaveLength(0);
+    expect(putPages).toHaveLength(0);
+    expect(logs.some((line) => line.includes('before_scheduled_time=08:00'))).toBe(true);
+  });
+
+  test('treats Tokyo 08:04 as due within the scheduled-time tolerance', async () => {
+    loadProfile(fakeExecutiveProfile({
+      timezone: 'Asia/Tokyo',
+      pushPreferences: {
+        morning_brief: { enabled: true, time: '08:00', channel: 'dingtalk' },
+      },
+    }));
+    const { calls } = setPush({ pushed: true, skipped: false });
+    const { ctx, putPages } = makeCtx();
+
+    const result = await runExecutiveBrief(ctx, {
+      executiveId: 'ceo',
+      dateUtc: new Date('2026-05-20T23:04:00.000Z'),
+    });
+
+    expect(result.pushed).toBe(true);
+    expect(result.skipped).toBeUndefined();
+    expect(calls).toHaveLength(1);
+    expect(putPages).toHaveLength(1);
+  });
+
+  test('skips Tokyo 08:06 outside the scheduled-time tolerance', async () => {
+    loadProfile(fakeExecutiveProfile({
+      timezone: 'Asia/Tokyo',
+      pushPreferences: {
+        morning_brief: { enabled: true, time: '08:00', channel: 'dingtalk' },
+      },
+    }));
+    const { calls } = setPush({ pushed: true, skipped: false });
+    const { ctx, putPages } = makeCtx();
+
+    const result = await runExecutiveBrief(ctx, {
+      executiveId: 'ceo',
+      dateUtc: new Date('2026-05-20T23:06:00.000Z'),
+    });
+
+    expect(result).toEqual({
+      pushed: false,
+      skipped: 'before_scheduled_time',
+      nextEligibleAt: '2026-05-21T23:00:00.000Z',
+    });
+    expect(calls).toHaveLength(0);
+    expect(putPages).toHaveLength(0);
+  });
+
+  test('warns and defaults invalid morning_brief.time to 08:00', async () => {
+    loadProfile(fakeExecutiveProfile({
+      timezone: 'Asia/Tokyo',
+      pushPreferences: {
+        morning_brief: { enabled: true, time: '8', channel: 'dingtalk' },
+      },
+    }));
+    const { calls } = setPush({ pushed: true, skipped: false });
+    const { ctx, logs } = makeCtx();
+
+    const result = await runExecutiveBrief(ctx, {
+      executiveId: 'ceo',
+      dateUtc: new Date('2026-05-20T23:00:00.000Z'),
+    });
+
+    expect(result.pushed).toBe(true);
+    expect(calls).toHaveLength(1);
+    expect(logs.some((line) => line.includes("invalid morning_brief.time '8'"))).toBe(true);
+  });
+
+  test('warns on invalid quiet_hours but not on an undefined quiet window', async () => {
+    loadProfile(fakeExecutiveProfile({
+      timezone: 'Asia/Shanghai',
+      pushPreferences: {
+        morning_brief: {
+          enabled: true,
+          time: '08:00',
+          channel: 'dingtalk',
+          quiet_hours: '08:00',
+        } as never,
+      },
+    }));
+    const { calls } = setPush({ pushed: true, skipped: false });
+    const { ctx, logs } = makeCtx();
+
+    const result = await runExecutiveBrief(ctx, {
+      executiveId: 'ceo',
+      dateUtc: new Date('2026-05-21T00:00:00.000Z'),
+    });
+
+    expect(result.pushed).toBe(true);
+    expect(calls).toHaveLength(1);
+    expect(logs.filter((line) => line.includes("invalid quiet_hours format '08:00'"))).toHaveLength(1);
+
+    loadProfile(fakeExecutiveProfile({
+      timezone: 'Asia/Shanghai',
+      pushPreferences: {
+        morning_brief: { enabled: true, time: '08:00', channel: 'dingtalk' },
+      },
+    }));
+    const secondPush = setPush({ pushed: true, skipped: false });
+    const second = makeCtx();
+
+    const secondResult = await runExecutiveBrief(second.ctx, {
+      executiveId: 'ceo',
+      dateUtc: new Date('2026-05-21T00:00:00.000Z'),
+    });
+
+    expect(secondResult.pushed).toBe(true);
+    expect(secondPush.calls).toHaveLength(1);
+    expect(second.logs.some((line) => line.includes('invalid quiet_hours'))).toBe(false);
+  });
+
   test('generates the E2 stub page and pushes morning brief once on the normal path', async () => {
     loadProfile(fakeExecutiveProfile({
       pushPreferences: {
@@ -212,7 +367,7 @@ describe('runExecutiveBrief', () => {
 
     const result = await runExecutiveBrief(ctx, {
       executiveId: 'ceo',
-      dateUtc: new Date('2026-05-21T00:00:00.000Z'),
+      dateUtc: new Date('2026-05-20T23:00:00.000Z'),
     });
 
     expect(result.skipped).toBeUndefined();

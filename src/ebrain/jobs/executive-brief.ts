@@ -8,6 +8,8 @@ import { generateExecutiveBriefStub } from './generate-brief-stub.ts';
 
 export const EXECUTIVE_BRIEF_JOB = 'ebrain-executive-brief';
 export const DEFAULT_EXECUTIVE_TIMEZONE = 'Asia/Shanghai';
+const DEFAULT_MORNING_BRIEF_TIME = '08:00';
+const SCHEDULE_TOLERANCE_MINUTES = 5;
 const PUSH_ATTEMPTS = 3;
 
 export interface RunExecutiveBriefOpts {
@@ -35,6 +37,11 @@ interface LocalDateTimeParts {
 interface QuietWindow {
   start: number;
   end: number;
+  raw: string;
+}
+
+interface ScheduledMorningBriefTime {
+  minute: number;
   raw: string;
 }
 
@@ -183,6 +190,45 @@ export function nextEligibleAtForQuietHours(dateUtc: Date, timezone: string, win
   return zonedLocalTimeToUtc(target, timezone).toISOString();
 }
 
+function readMorningBriefTime(
+  profile: ExecutiveProfile,
+  logger: OperationContext['logger'],
+): ScheduledMorningBriefTime {
+  const raw = morningBriefPrefs(profile).time;
+  const fallback = parseHHMM(DEFAULT_MORNING_BRIEF_TIME);
+  if (fallback === null) throw new Error('invalid_default_morning_brief_time');
+
+  if (raw === undefined) return { minute: fallback, raw: DEFAULT_MORNING_BRIEF_TIME };
+  if (typeof raw === 'string') {
+    const parsed = parseHHMM(raw.trim());
+    if (parsed !== null) return { minute: parsed, raw: raw.trim() };
+  }
+
+  logger.warn(
+    `[executive-brief] invalid morning_brief.time '${String(raw)}', treating as default ${DEFAULT_MORNING_BRIEF_TIME}`,
+  );
+  return { minute: fallback, raw: DEFAULT_MORNING_BRIEF_TIME };
+}
+
+function isMorningBriefScheduledNow(currentMinute: number, scheduledMinute: number): boolean {
+  return currentMinute >= scheduledMinute
+    && currentMinute <= scheduledMinute + SCHEDULE_TOLERANCE_MINUTES;
+}
+
+function nextEligibleAtForScheduledTime(dateUtc: Date, timezone: string, scheduledMinute: number): string {
+  const currentParts = getLocalParts(dateUtc, timezone);
+  const currentMinute = minuteOfDay(currentParts);
+  const scheduledParts = {
+    ...currentParts,
+    hour: Math.floor(scheduledMinute / 60),
+    minute: scheduledMinute % 60,
+  };
+  const target = currentMinute > scheduledMinute + SCHEDULE_TOLERANCE_MINUTES
+    ? addLocalDays(scheduledParts, 1)
+    : scheduledParts;
+  return zonedLocalTimeToUtc(target, timezone).toISOString();
+}
+
 function morningBriefPrefs(profile: ExecutiveProfile): Record<string, unknown> {
   return record(record(profile.pushPreferences).morning_brief);
 }
@@ -191,10 +237,37 @@ function isMorningBriefEnabled(profile: ExecutiveProfile): boolean {
   return morningBriefPrefs(profile).enabled !== false;
 }
 
-function readQuietHours(profile: ExecutiveProfile): QuietWindow | null {
+function warnInvalidQuietHours(logger: OperationContext['logger'], raw: unknown): void {
+  logger.warn(
+    `[executive-brief] invalid quiet_hours format '${String(raw)}', treating as no quiet window`,
+  );
+}
+
+function readQuietHours(profile: ExecutiveProfile, logger: OperationContext['logger']): QuietWindow | null {
+  const morningBrief = morningBriefPrefs(profile);
   const prefs = record(profile.pushPreferences);
-  return parseQuietHours(morningBriefPrefs(profile).quiet_hours)
-    ?? parseQuietHours(prefs.quiet_hours);
+
+  if (Object.prototype.hasOwnProperty.call(morningBrief, 'quiet_hours')) {
+    const raw = morningBrief.quiet_hours;
+    const parsed = parseQuietHours(raw);
+    if (parsed) return parsed;
+    if (raw !== undefined) {
+      // Keep prior no-quiet-window semantics, but surface typos to operators.
+      warnInvalidQuietHours(logger, raw);
+    }
+    return null;
+  }
+
+  if (Object.prototype.hasOwnProperty.call(prefs, 'quiet_hours')) {
+    const raw = prefs.quiet_hours;
+    const parsed = parseQuietHours(raw);
+    if (parsed) return parsed;
+    if (raw !== undefined) {
+      warnInvalidQuietHours(logger, raw);
+    }
+  }
+
+  return null;
 }
 
 function briefSlugFor(localDate: string, executiveId: string): string {
@@ -296,9 +369,10 @@ export async function runExecutiveBrief(
   }
 
   const timezone = safeTimezone(profile.timezone, ctx.logger);
-  const quietHours = readQuietHours(profile);
+  const localParts = getLocalParts(dateUtc, timezone);
+  const currentMinute = minuteOfDay(localParts);
+  const quietHours = readQuietHours(profile, ctx.logger);
   if (quietHours) {
-    const currentMinute = minuteOfDay(getLocalParts(dateUtc, timezone));
     if (isMinuteInQuietWindow(currentMinute, quietHours)) {
       const nextEligibleAt = nextEligibleAtForQuietHours(dateUtc, timezone, quietHours);
       ctx.logger.info(
@@ -306,6 +380,15 @@ export async function runExecutiveBrief(
       );
       return { pushed: false, skipped: 'in_quiet_hours', nextEligibleAt };
     }
+  }
+
+  const scheduledTime = readMorningBriefTime(profile, ctx.logger);
+  if (!isMorningBriefScheduledNow(currentMinute, scheduledTime.minute)) {
+    const nextEligibleAt = nextEligibleAtForScheduledTime(dateUtc, timezone, scheduledTime.minute);
+    ctx.logger.info(
+      `[executive-brief] skipped ${profile.executiveId}: before_scheduled_time=${scheduledTime.raw} next_eligible_at=${nextEligibleAt}`,
+    );
+    return { pushed: false, skipped: 'before_scheduled_time', nextEligibleAt };
   }
 
   const { generateBrief } = deps();

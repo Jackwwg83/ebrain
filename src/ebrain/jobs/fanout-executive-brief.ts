@@ -18,9 +18,16 @@ type EngineSubmitJob = (
 
 export interface FanoutExecutiveBriefResult {
   submitted: number;
+  failed_submissions: number;
   child_ids: number[];
   childJobIds: number[];
+  failures: FanoutSubmissionFailure[];
   dateUtc: string;
+}
+
+export interface FanoutSubmissionFailure {
+  executiveId: string;
+  error: string;
 }
 
 function normalizeDateUtc(value: unknown): Date {
@@ -48,6 +55,10 @@ function childIdFromSubmitResult(result: unknown): number {
     return (result as { id: number }).id;
   }
   throw new Error('child job submission did not return an id');
+}
+
+function errorMessage(error: unknown): string {
+  return String(error);
 }
 
 function engineSubmitJob(ctx: OperationContext): EngineSubmitJob | null {
@@ -98,16 +109,27 @@ export async function runFanoutExecutiveBrief(
   const dateUtc = normalizeDateUtc(job.data?.dateUtc);
   const executives = await listExecutiveProfiles(ctx.engine);
   const childIds: number[] = [];
+  const failedSubmissions: FanoutSubmissionFailure[] = [];
 
   for (const profile of executives) {
-    childIds.push(await submitExecutiveBriefChild(ctx, profile, dateUtc, job.id));
+    try {
+      childIds.push(await submitExecutiveBriefChild(ctx, profile, dateUtc, job.id));
+    } catch (error) {
+      const message = errorMessage(error);
+      failedSubmissions.push({ executiveId: profile.executiveId, error: message });
+      ctx.logger.warn(`[executive-brief-fanout] submit failed for ${profile.executiveId}: ${message}`);
+    }
   }
 
-  ctx.logger.info(`[executive-brief-fanout] submitted ${childIds.length} executive brief child jobs`);
+  ctx.logger.info(
+    `[executive-brief-fanout] submitted ${childIds.length} executive brief child jobs; failed_submissions=${failedSubmissions.length}`,
+  );
   return {
     submitted: childIds.length,
+    failed_submissions: failedSubmissions.length,
     child_ids: childIds,
     childJobIds: childIds,
+    failures: failedSubmissions,
     dateUtc: dateUtc.toISOString(),
   };
 }

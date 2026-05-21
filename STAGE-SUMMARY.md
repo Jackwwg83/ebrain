@@ -1966,7 +1966,7 @@ STAGE-SUMMARY.md
 | Focused job tests | PASS | `bun test tests/ebrain/jobs/` -> 16 pass, 0 fail, 78 expect() calls |
 | Runtime DB artifact | PASS | `executive-brief.test.ts` runs a real isolated PGLite v200 brain, inserts an `executives` row and `enterprise` source, runs `runExecutiveBrief`, then directly reads DB page `briefs/daily/2026-05-21-ceo` with frontmatter `{executive_id:'ceo', generator_stage:'E2_stub', dream_generated:true}` and stub body text |
 | Disabled preference | PASS | `executive-brief.test.ts` verifies `morning_brief.enabled=false` returns `skipped: 'morning_brief.disabled'` and calls no push/write path |
-| Quiet hours and timezone | PASS | `executive-brief.test.ts` verifies `Asia/Shanghai` `22:00-07:00` skips at `2026-05-21T14:30:00.000Z` with `nextEligibleAt=2026-05-21T23:00:00.000Z`, and `Asia/Tokyo` at `2026-05-21T00:00:00.000Z` derives local brief date `2026-05-21` |
+| Quiet hours and timezone | PASS | `executive-brief.test.ts` verifies `Asia/Shanghai` `22:00-07:00` skips at `2026-05-21T14:30:00.000Z` with `nextEligibleAt=2026-05-21T23:00:00.000Z`, and `Asia/Tokyo` at `2026-05-20T23:00:00.000Z` derives local brief date `2026-05-21` |
 | Push soft failure | PASS | `executive-brief.test.ts` forces three failed push results, verifies exactly three attempts, `pushed:false`, and a DB update containing `morning_brief.disabled_at='2026-05-21T00:00:00.000Z'` |
 | Fan-out | PASS | `fanout-executive-brief.test.ts` inserts three active executives plus deleted/inactive rows, observes exactly three child submissions with `on_child_fail:'continue'`, and verifies idempotency key `executive-brief:2026-05-21:cto` |
 | Typecheck | PASS | `bun run typecheck` -> `tsc --noEmit` exited 0 |
@@ -1997,3 +1997,12 @@ STAGE-SUMMARY.md
 - `dream_generated: true` is present both in the stub markdown frontmatter and the DB page frontmatter so downstream dream-cycle guards can ignore generated brief pages.
 - Quiet hours are checked but not waited on. Jobs inside the window return `skipped: 'in_quiet_hours'` plus `nextEligibleAt`; the next cron cycle re-evaluates eligibility.
 - Push orchestration is reused from D2 unchanged; E2 adds no LLM path to push code and no schema migration.
+
+## Fixwave R1
+
+- Baseline: `09650395`; reviewer R1 found `E2-M-001`, `E2-M-002`, and `E2-L-001`; all three were fixed in one wave with no `src/core/`, `src/mcp/`, or `src/ebrain/bot/push-orchestrator.ts` changes.
+- M-001: `runExecutiveBrief` now reads `pushPreferences.morning_brief.time` as strict `HH:MM` in the executive IANA timezone, defaults missing/undefined time to `08:00`, warns and falls back on invalid values, and returns `{ skipped: 'before_scheduled_time', nextEligibleAt }` when outside the due window.
+- M-001 regression coverage: Tokyo `08:00` pushes, Tokyo `07:59` skips with same-day `nextEligibleAt`, Tokyo `08:04` pushes within tolerance, Tokyo `08:06` skips with next-day `nextEligibleAt`, and invalid time `'8'` warns then uses the `08:00` default.
+- M-002: `runFanoutExecutiveBrief` wraps each child submission in per-executive `try/catch`, continues later executives after one submit failure, logs failures, and returns `failed_submissions` plus `failures` without throwing when all submissions fail.
+- L-001: malformed `quiet_hours` such as `'08:00'` now logs `[executive-brief] invalid quiet_hours format ...` and preserves prior no-quiet-window behavior; undefined `quiet_hours` produces no warning.
+- Evidence: `bun run typecheck` exited 0; `bun test tests/ebrain/jobs/ 2>&1 | tail -5` -> 24 pass, 0 fail, 116 expect() calls; `bun run verify` exited 0; `git diff 09650395 -- 'src/core/' 'src/mcp/' --stat` returned empty.

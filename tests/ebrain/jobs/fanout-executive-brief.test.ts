@@ -54,13 +54,20 @@ async function seedExecutive(
   );
 }
 
-function installSubmitSpy(engine: OperationContext['engine']): Submission[] {
+function installSubmitSpy(
+  engine: OperationContext['engine'],
+  failExecutiveIds: Set<string> = new Set(),
+): Submission[] {
   const submissions: Submission[] = [];
   (engine as unknown as { submitJob: unknown }).submitJob = async (
     job: Submission['job'],
     opts?: Record<string, unknown>,
   ) => {
     submissions.push({ job, opts });
+    const executiveId = String(job.data.executiveId);
+    if (failExecutiveIds.has(executiveId)) {
+      throw new Error(`submit failed for ${executiveId}`);
+    }
     return { id: 1000 + submissions.length };
   };
   return submissions;
@@ -110,6 +117,49 @@ describe('runFanoutExecutiveBrief', () => {
         parent_job_id: 88,
         idempotency_key: 'executive-brief:2026-05-21:cto',
       });
+    });
+  });
+
+  test('continues submitting later executives when one child submission fails', async () => {
+    await withEngine(async (engine) => {
+      await seedExecutive(engine, 'a');
+      await seedExecutive(engine, 'b');
+      await seedExecutive(engine, 'c');
+      const submissions = installSubmitSpy(engine, new Set(['b']));
+
+      const result = await runFanoutExecutiveBrief(makeCtx(engine), {
+        id: 99,
+        data: { dateUtc: '2026-05-21' },
+      });
+
+      expect(submissions.map((entry) => entry.job.data.executiveId)).toEqual(['a', 'b', 'c']);
+      expect(result.submitted).toBe(2);
+      expect(result.failed_submissions).toBe(1);
+      expect(result.child_ids).toEqual([1001, 1003]);
+      expect(result.childJobIds).toEqual([1001, 1003]);
+      expect(result.failures).toEqual([{ executiveId: 'b', error: 'Error: submit failed for b' }]);
+    });
+  });
+
+  test('returns submission failures without throwing when all executives fail', async () => {
+    await withEngine(async (engine) => {
+      await seedExecutive(engine, 'a');
+      await seedExecutive(engine, 'b');
+      await seedExecutive(engine, 'c');
+      const submissions = installSubmitSpy(engine, new Set(['a', 'b', 'c']));
+
+      const result = await runFanoutExecutiveBrief(makeCtx(engine), {
+        id: 100,
+        data: { dateUtc: '2026-05-21' },
+      });
+
+      expect(submissions.map((entry) => entry.job.data.executiveId)).toEqual(['a', 'b', 'c']);
+      expect(result.submitted).toBe(0);
+      expect(result.failed_submissions).toBe(3);
+      expect(result.child_ids).toEqual([]);
+      expect(result.childJobIds).toEqual([]);
+      expect(result.failures.map((failure) => failure.executiveId)).toEqual(['a', 'b', 'c']);
+      expect(result.failures.every((failure) => failure.error.includes('submit failed for'))).toBe(true);
     });
   });
 });
