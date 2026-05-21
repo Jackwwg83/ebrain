@@ -2,3 +2,10 @@ ebrain.enterprise-cycle:
   schedule: "0 3 * * *"  # daily 3am
   job_name: ebrain-enterprise-cycle
   idempotency_key_template: "enterprise-cycle:{{date}}"
+
+ebrain.executive-brief:
+  schedule: "0 8 * * *"  # daily 8am server time; each child evaluates executive timezone
+  job_name: ebrain-executive-brief-fanout
+  child_job_name: ebrain-executive-brief
+  idempotency_key_template: "executive-brief:{{date}}:{{executive_id}}"
+  fanout: per-executive

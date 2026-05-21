@@ -1936,3 +1936,64 @@ STAGE-SUMMARY.md
 - L-001: `enterprise_ingest_status` and `detect_enterprise_conflicts` now reject any context where `ctx.remote !== false`, so direct handler calls with omitted/undefined `remote` fail closed with `permission_denied`.
 - Runtime redaction evidence: isolated PGLite `list_executives` run returned `critical_signal: {enabled:true}` and printed `contains_min_severity=false`, `contains_quiet_hours=false`.
 - Verification: `git diff 52b2c4fe -- 'src/core/' 'src/mcp/' --stat` returned empty; `bun run typecheck` exited 0; `bun test tests/ebrain/ops/ 2>&1 | tail -5` -> 9 pass, 0 fail, 41 expect() calls; `bun run verify` exited 0.
+
+# Stage E2: Morning Brief Generator + Push Orchestrator
+
+## Status
+
+- Stage: E2
+- Branch: `ebrain-mvp`
+- Baseline: `897a05ef`
+- Scope: executive morning brief job, Stage E2 stub generator, push retry/soft-fail handling, per-executive fan-out, Minions handler registration, cron recipe, focused tests.
+- Result: PASS locally. Brief content generation remains an explicit Stage E2 stub and does not call the `executive-daily-brief` skill or any LLM.
+
+## Implementation
+
+- `src/ebrain/jobs/generate-brief-stub.ts`: added the deliberate E2 stub generator. It emits markdown with frontmatter (`executive_id`, `generated_at`, `generator_stage: E2_stub`, `dream_generated: true`), includes `## 今日要点`, and logs `[brief gen stub — awaiting I1]`.
+- `src/ebrain/jobs/executive-brief.ts`: implemented `runExecutiveBrief(ctx, { executiveId, dateUtc })`; it loads the DB-backed E1 profile, skips disabled morning briefs, evaluates `HH:MM-HH:MM` quiet hours in the executive IANA timezone, writes the generated brief to a DB page under `briefs/daily/{YYYY-MM-DD}-{executive_id}`, and calls the existing D2 `pushMorningBrief` orchestrator.
+- `src/ebrain/jobs/executive-brief.ts`: push failures are retried three times and then handled as a soft failure; the job marks `push_preferences.morning_brief.disabled_at`/`disabled_reason`, logs the permanent failure, and returns `{ pushed: false }` instead of throwing into dead-letter behavior.
+- `src/ebrain/jobs/fanout-executive-brief.ts`: added the cron fan-out entry that lists active, non-deleted executives and submits one `ebrain-executive-brief` child job per executive with deterministic idempotency key `executive-brief:{local-date}:{executive_id}`.
+- `src/ebrain/jobs/run-enterprise-job.ts`: added the E2-only dispatcher branch for `ebrain-executive-brief`; all other enterprise job names still throw `not_implemented:*` for later stages.
+- `src/commands/jobs.ts`: appended lazy Minions registrations for `ebrain-executive-brief` and `ebrain-executive-brief-fanout`, matching the B2/D2/F2 lazy import pattern.
+- `enterprise-recipes/cron/enterprise-cron.yml`: appended the daily 8am server-time `ebrain.executive-brief` recipe, with fan-out metadata and child idempotency key template; the existing F2 enterprise-cycle entry is unchanged.
+
+## Verification Evidence
+
+| Check | Result | Evidence |
+|---|---|---|
+| Start state | PASS | `git status --short --branch` showed `## ebrain-mvp...origin/ebrain-mvp`; `git rev-parse HEAD` -> `897a05efe9aea7befdb21012c667266f3b0653ce`; `git branch --show-current` -> `ebrain-mvp` |
+| No new dependency | PASS | `rg -n '"luxon"|luxon|dependencies|devDependencies' package.json` showed no `luxon`; implementation uses native `Intl.DateTimeFormat` |
+| Focused job tests | PASS | `bun test tests/ebrain/jobs/` -> 16 pass, 0 fail, 78 expect() calls |
+| Runtime DB artifact | PASS | `executive-brief.test.ts` runs a real isolated PGLite v200 brain, inserts an `executives` row and `enterprise` source, runs `runExecutiveBrief`, then directly reads DB page `briefs/daily/2026-05-21-ceo` with frontmatter `{executive_id:'ceo', generator_stage:'E2_stub', dream_generated:true}` and stub body text |
+| Disabled preference | PASS | `executive-brief.test.ts` verifies `morning_brief.enabled=false` returns `skipped: 'morning_brief.disabled'` and calls no push/write path |
+| Quiet hours and timezone | PASS | `executive-brief.test.ts` verifies `Asia/Shanghai` `22:00-07:00` skips at `2026-05-21T14:30:00.000Z` with `nextEligibleAt=2026-05-21T23:00:00.000Z`, and `Asia/Tokyo` at `2026-05-21T00:00:00.000Z` derives local brief date `2026-05-21` |
+| Push soft failure | PASS | `executive-brief.test.ts` forces three failed push results, verifies exactly three attempts, `pushed:false`, and a DB update containing `morning_brief.disabled_at='2026-05-21T00:00:00.000Z'` |
+| Fan-out | PASS | `fanout-executive-brief.test.ts` inserts three active executives plus deleted/inactive rows, observes exactly three child submissions with `on_child_fail:'continue'`, and verifies idempotency key `executive-brief:2026-05-21:cto` |
+| Typecheck | PASS | `bun run typecheck` -> `tsc --noEmit` exited 0 |
+| Full verify | PASS | `bun run verify` -> privacy, proposal PII, test names, JSONB, source-id projection, progress, isolation, WASM, admin build, admin scope, CLI executable, system-of-record, eval glossary, synthetic corpus privacy, and typecheck all passed |
+| gbrain core/mcp untouched | PASS | `git diff 897a05ef..HEAD -- 'src/core/' 'src/mcp/' --stat` returned empty |
+| `src/commands/jobs.ts` append-only guard | PASS | `git diff -- src/commands/jobs.ts \| grep -cE '^-[^-]'` -> `0` deletions |
+| `enterprise-cron.yml` append-only guard | PASS | `git diff -- enterprise-recipes/cron/enterprise-cron.yml \| grep -cE '^-[^-]'` -> `0` deletions |
+
+## Files Changed
+
+```text
+enterprise-recipes/cron/enterprise-cron.yml
+src/commands/jobs.ts
+src/ebrain/jobs/executive-brief.ts
+src/ebrain/jobs/fanout-executive-brief.ts
+src/ebrain/jobs/generate-brief-stub.ts
+src/ebrain/jobs/index.ts
+src/ebrain/jobs/run-enterprise-job.ts
+tests/ebrain/jobs/executive-brief.test.ts
+tests/ebrain/jobs/fanout-executive-brief.test.ts
+STAGE-SUMMARY.md
+```
+
+## Runtime Notes
+
+- E2 does not call `executive-daily-brief/SKILL.md`; that remains for I1. The stub log and `generator_stage: E2_stub` frontmatter make the handoff explicit.
+- Briefs are written as DB pages via `engine.putPage(..., { sourceId: 'enterprise' })`; E2 does not write markdown files into the brain repo filesystem.
+- `dream_generated: true` is present both in the stub markdown frontmatter and the DB page frontmatter so downstream dream-cycle guards can ignore generated brief pages.
+- Quiet hours are checked but not waited on. Jobs inside the window return `skipped: 'in_quiet_hours'` plus `nextEligibleAt`; the next cron cycle re-evaluates eligibility.
+- Push orchestration is reused from D2 unchanged; E2 adds no LLM path to push code and no schema migration.

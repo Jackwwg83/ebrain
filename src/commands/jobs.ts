@@ -1179,6 +1179,56 @@ export async function registerBuiltinHandlers(worker: MinionWorker, engine: Brai
   worker.register('ebrain-enterprise-cycle', ebrainEnterpriseCycleHandler);
   worker.register('ebrain-enterprise-cycle-shard', ebrainEnterpriseCycleHandler);
 
+  const ebrainExecutiveBriefHandler: MinionHandler = async (job) => {
+    const { runExecutiveBrief } = await import('../ebrain/jobs/executive-brief.ts');
+    const executiveId = typeof job.data.executiveId === 'string'
+      ? job.data.executiveId
+      : typeof job.data.executive_id === 'string'
+        ? job.data.executive_id
+        : '';
+    if (!executiveId) throw new Error('ebrain-executive-brief requires job.data.executiveId');
+    const dateUtc = typeof job.data.dateUtc === 'string'
+      ? new Date(job.data.dateUtc)
+      : job.data.dateUtc instanceof Date
+        ? job.data.dateUtc
+        : undefined;
+    if (dateUtc && Number.isNaN(dateUtc.getTime())) {
+      throw new Error('ebrain-executive-brief job.data.dateUtc must be a valid ISO date');
+    }
+    const ctx: OperationContext = {
+      engine,
+      config: { engine: engine.kind },
+      logger: {
+        info: (msg) => process.stderr.write(`[ebrain-executive-brief] ${msg}\n`),
+        warn: (msg) => process.stderr.write(`[ebrain-executive-brief] WARN ${msg}\n`),
+        error: (msg) => process.stderr.write(`[ebrain-executive-brief] ERROR ${msg}\n`),
+      },
+      dryRun: false,
+      remote: false,
+      sourceId: 'enterprise',
+    } as OperationContext;
+    return runExecutiveBrief(ctx, { executiveId, dateUtc });
+  };
+  worker.register('ebrain-executive-brief', ebrainExecutiveBriefHandler);
+
+  const ebrainExecutiveBriefFanoutHandler: MinionHandler = async (job) => {
+    const { runFanoutExecutiveBrief } = await import('../ebrain/jobs/fanout-executive-brief.ts');
+    const ctx: OperationContext = {
+      engine,
+      config: { engine: engine.kind },
+      logger: {
+        info: (msg) => process.stderr.write(`[ebrain-executive-brief-fanout] ${msg}\n`),
+        warn: (msg) => process.stderr.write(`[ebrain-executive-brief-fanout] WARN ${msg}\n`),
+        error: (msg) => process.stderr.write(`[ebrain-executive-brief-fanout] ERROR ${msg}\n`),
+      },
+      dryRun: false,
+      remote: false,
+      sourceId: 'enterprise',
+    } as OperationContext;
+    return runFanoutExecutiveBrief(ctx, job);
+  };
+  worker.register('ebrain-executive-brief-fanout', ebrainExecutiveBriefFanoutHandler);
+
   // Shell handler is always registered. Runtime env guard lives inside the
   // handler so claimed jobs emit a clear rejection log on workers missing
   // GBRAIN_ALLOW_SHELL_JOBS=1.
