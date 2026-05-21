@@ -26,4 +26,13 @@ describe('derivePathsFromSoulPath', () => {
       subagentName: 'founder',
     });
   });
+
+  test('rejects non-SOUL.md basenames', () => {
+    expect(() => derivePathsFromSoulPath('executives/ceo', 'ceo')).toThrow(
+      'soul_path basename must be SOUL.md, got: ceo',
+    );
+    expect(() => derivePathsFromSoulPath('executives/ceo/README.md', 'ceo')).toThrow(
+      'soul_path basename must be SOUL.md, got: README.md',
+    );
+  });
 });

@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'bun:test';
+import { runExecutives } from '../../../src/commands/executives.ts';
 import { createExecutive } from '../../../src/ebrain/executives/create.ts';
 import { withEngine } from './helpers.ts';
 
@@ -41,6 +42,30 @@ describe('createExecutive', () => {
         role: 'COO',
         soulPath: 'executives/coo/SOUL.md',
       })).rejects.toThrow();
+    });
+  }, 30_000);
+
+  test('CLI create defaults omitted --soul-path to executives/<id>/SOUL.md', async () => {
+    await withEngine(async (engine) => {
+      const exitCode = await runExecutives(engine, [
+        'create',
+        'ceo',
+        '--email',
+        'ceo@example.test',
+        '--name',
+        'CEO Example',
+        '--role',
+        'CEO',
+      ]);
+
+      expect(exitCode).toBe(0);
+      const rows = await engine.executeRaw<{ soul_path: string; access_policy_path: string }>(
+        `SELECT soul_path, access_policy_path FROM executives WHERE executive_id = 'ceo'`,
+      );
+      expect(rows[0]).toEqual({
+        soul_path: 'executives/ceo/SOUL.md',
+        access_policy_path: 'executives/ceo/AGENT_PERSONA.md',
+      });
     });
   }, 30_000);
 });

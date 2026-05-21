@@ -15,7 +15,7 @@ interface ParsedArgs {
 
 function usage(): string {
   return `Usage:
-  gbrain executives create <id> --email <email> --name <name> --role <role> --soul-path <path>
+  gbrain executives create <id> --email <email> --name <name> --role <role> [--soul-path <path>]
   gbrain executives list
   gbrain executives validate <id>
   gbrain executives update <id> --field value
@@ -98,6 +98,10 @@ async function resolveRepoRoot(engine: BrainEngine): Promise<string> {
   }
 }
 
+function defaultSoulPath(executiveId: string): string {
+  return `executives/${executiveId}/SOUL.md`;
+}
+
 async function runCreate(engine: BrainEngine, args: string[]): Promise<void> {
   const parsed = parseArgs(args);
   const id = parsed.positionals[0];
@@ -108,7 +112,9 @@ async function runCreate(engine: BrainEngine, args: string[]): Promise<void> {
     email: requireString(parsed.flags, 'email'),
     displayName: requireString(parsed.flags, 'name'),
     role: requireString(parsed.flags, 'role'),
-    soulPath: requireString(parsed.flags, 'soul-path'),
+    soulPath: 'soul-path' in parsed.flags
+      ? requireString(parsed.flags, 'soul-path')
+      : defaultSoulPath(id),
     timezone: optionalString(parsed.flags, 'timezone'),
     locale: optionalString(parsed.flags, 'locale'),
     department: nullableString(parsed.flags, 'department'),
@@ -142,21 +148,20 @@ async function runList(engine: BrainEngine): Promise<void> {
   }
 }
 
-async function runValidate(engine: BrainEngine, args: string[]): Promise<void> {
+async function runValidate(engine: BrainEngine, args: string[]): Promise<number> {
   const id = args[0];
   if (!id) throw new Error('missing executive id');
 
   const result = await auditExecutive(engine, id, { rootDir: await resolveRepoRoot(engine) });
   if (!result.profile) {
     console.error(`executive not found: ${id}`);
-    process.exitCode = 1;
-    return;
+    return 1;
   }
 
   for (const file of result.files) {
     console.log(`${file.exists ? 'PASS' : 'FAIL'} ${file.label} ${file.path}`);
   }
-  if (!result.ok) process.exitCode = 1;
+  return result.ok ? 0 : 1;
 }
 
 function buildUpdatePatch(flags: Record<string, string | boolean>): UpdateExecutivePatch {
@@ -182,7 +187,7 @@ function buildUpdatePatch(flags: Record<string, string | boolean>): UpdateExecut
   ) as UpdateExecutivePatch;
 }
 
-async function runUpdate(engine: BrainEngine, args: string[]): Promise<void> {
+async function runUpdate(engine: BrainEngine, args: string[]): Promise<number> {
   const parsed = parseArgs(args);
   const id = parsed.positionals[0];
   if (!id) throw new Error('missing executive id');
@@ -190,33 +195,31 @@ async function runUpdate(engine: BrainEngine, args: string[]): Promise<void> {
   const profile = await updateExecutive(engine, id, buildUpdatePatch(parsed.flags));
   if (!profile) {
     console.error(`executive not found: ${id}`);
-    process.exitCode = 1;
-    return;
+    return 1;
   }
   console.log(`updated executive ${profile.executiveId}`);
+  return 0;
 }
 
-export async function runExecutives(engine: BrainEngine, args: string[]): Promise<void> {
+export async function runExecutives(engine: BrainEngine, args: string[]): Promise<number> {
   const [subcommand, ...rest] = args;
   try {
     switch (subcommand) {
       case 'create':
         await runCreate(engine, rest);
-        return;
+        return 0;
       case 'list':
         await runList(engine);
-        return;
+        return 0;
       case 'validate':
-        await runValidate(engine, rest);
-        return;
+        return await runValidate(engine, rest);
       case 'update':
-        await runUpdate(engine, rest);
-        return;
+        return await runUpdate(engine, rest);
       case undefined:
       case '--help':
       case '-h':
         console.log(usage());
-        return;
+        return 0;
       default:
         throw new Error(`unknown executives subcommand: ${subcommand}`);
     }
@@ -224,6 +227,6 @@ export async function runExecutives(engine: BrainEngine, args: string[]): Promis
     console.error((err as Error).message);
     console.error('');
     console.error(usage());
-    process.exitCode = 1;
+    return 1;
   }
 }

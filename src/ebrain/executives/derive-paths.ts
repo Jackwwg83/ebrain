@@ -12,6 +12,10 @@ export function derivePathsFromSoulPath(
 ): DerivedExecutivePaths {
   const normalizedSoulPath = soulPath.replace(/\\/g, '/');
   const lastSlash = normalizedSoulPath.lastIndexOf('/');
+  const basename = normalizedSoulPath.slice(lastSlash + 1);
+  if (basename !== 'SOUL.md') {
+    throw new Error(`soul_path basename must be SOUL.md, got: ${basename}`);
+  }
   const root = lastSlash === -1 ? '' : normalizedSoulPath.slice(0, lastSlash + 1);
 
   return {

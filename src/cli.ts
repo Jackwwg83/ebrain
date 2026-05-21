@@ -1089,8 +1089,7 @@ async function handleCliOnly(command: string, args: string[]) {
       }
       case 'executives': {
         const { runExecutives } = await import('./commands/executives.ts');
-        await runExecutives(engine, args);
-        break;
+        process.exit(await runExecutives(engine, args));
       }
       case 'agent': {
         const { runAgent } = await import('./commands/agent.ts');

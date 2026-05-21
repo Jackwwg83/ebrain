@@ -1853,3 +1853,14 @@ STAGE-SUMMARY.md
 - `preferences.yml` is optional for prompt assembly and renders an empty YAML block when missing; `validate` still fails when the required file is absent.
 - `personal-skills/` is a one-level scan of sorted `.md` files only. The first five are included; a `MORE` section is appended when additional files are present.
 - No production or staging brain was mutated. The runtime evidence used an isolated temporary PGLite brain and direct DB row inspection.
+
+## Fixwave R1
+
+- Scope: fixed reviewer R1 M-001, M-002, and L-001 against E1 commit `7ee115db`; no `src/core/` or `src/mcp/` files changed.
+- M-001: `gbrain executives create <id> --email ... --name ... --role ...` now defaults omitted `--soul-path` to `executives/<id>/SOUL.md`; explicit `--soul-path` still overrides.
+- M-002: `runExecutives(engine, args)` now returns an exit status. `validate` and `update` return `1` for missing/failed targets, caught create errors return `1`, and `src/cli.ts` exits with `process.exit(await runExecutives(...))`.
+- L-001: `derivePathsFromSoulPath` now rejects malformed basenames with `soul_path basename must be SOUL.md, got: <basename>` instead of deriving siblings from a directory-shaped path.
+- Tests: added `tests/ebrain/executives/cli-exit-code.test.ts`; extended create and derive-path tests for default `soul_path` and strict basename validation.
+- Evidence: `bun run typecheck` exited 0; `bun test tests/ebrain/executives/ 2>&1 | tail -5` -> 18 pass, 0 fail, 51 expect() calls; `bun run verify` exited 0.
+- Runtime evidence: isolated temp PGLite CLI run returned `create_exit=0`, `dup_exit=1`, `validate_missing_exit=1`, and `validate_nonexistent_exit=1`; direct throw probe returned `PASS: soul_path basename must be SOUL.md, got: ceo`.
+- Charter check: `git diff 7ee115db -- 'src/core/' 'src/mcp/' --stat` returned empty; `src/cli.ts` changed only the existing executives case body (`await runExecutives`/`break` replaced by `process.exit(await runExecutives(...))`).
