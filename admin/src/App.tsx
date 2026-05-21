@@ -5,12 +5,16 @@ import { AgentsPage } from './pages/Agents';
 import { RequestLogPage } from './pages/RequestLog';
 import { CalibrationPage } from './pages/Calibration';
 import { api } from './api';
+import { EbrainDashboardPage } from './ebrain/pages/Dashboard';
+import { EbrainExecutivesPage } from './ebrain/pages/Executives';
+import { EbrainEnterpriseAppsPage } from './ebrain/pages/EnterpriseApps';
+import { EbrainIngestionPage } from './ebrain/pages/Ingestion';
 
-type Page = 'login' | 'dashboard' | 'agents' | 'log' | 'calibration';
+type Page = 'login' | 'dashboard' | 'agents' | 'log' | 'calibration' | 'ebrain/dashboard' | 'ebrain/executives' | 'ebrain/enterprise-apps' | 'ebrain/ingestion';
 
 function getPage(): Page {
   const hash = window.location.hash.replace('#', '') || 'dashboard';
-  if (['login', 'dashboard', 'agents', 'log', 'calibration'].includes(hash)) return hash as Page;
+  if (['login', 'dashboard', 'agents', 'log', 'calibration', 'ebrain/dashboard', 'ebrain/executives', 'ebrain/enterprise-apps', 'ebrain/ingestion'].includes(hash)) return hash as Page;
   return 'dashboard';
 }
 
@@ -57,6 +61,14 @@ export function App() {
              onClick={() => navigate('log')}>Request Log</a>
           <a className={`nav-item ${page === 'calibration' ? 'active' : ''}`}
              onClick={() => navigate('calibration')}>Calibration</a>
+          <a className={`nav-item ${page === 'ebrain/dashboard' ? 'active' : ''}`}
+             onClick={() => navigate('ebrain/dashboard')}>Ebrain Dashboard</a>
+          <a className={`nav-item ${page === 'ebrain/executives' ? 'active' : ''}`}
+             onClick={() => navigate('ebrain/executives')}>Ebrain Executives</a>
+          <a className={`nav-item ${page === 'ebrain/enterprise-apps' ? 'active' : ''}`}
+             onClick={() => navigate('ebrain/enterprise-apps')}>Enterprise Apps</a>
+          <a className={`nav-item ${page === 'ebrain/ingestion' ? 'active' : ''}`}
+             onClick={() => navigate('ebrain/ingestion')}>Ebrain Ingestion</a>
         </div>
         <div style={{ marginTop: 'auto', padding: '16px 12px', borderTop: '1px solid var(--border)' }}>
           <button
@@ -82,6 +94,10 @@ export function App() {
         {page === 'agents' && <AgentsPage />}
         {page === 'log' && <RequestLogPage />}
         {page === 'calibration' && <CalibrationPage />}
+        {page === 'ebrain/dashboard' && <EbrainDashboardPage />}
+        {page === 'ebrain/executives' && <EbrainExecutivesPage />}
+        {page === 'ebrain/enterprise-apps' && <EbrainEnterpriseAppsPage />}
+        {page === 'ebrain/ingestion' && <EbrainIngestionPage />}
       </main>
     </div>
   );

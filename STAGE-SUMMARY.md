@@ -2173,3 +2173,69 @@ STAGE-SUMMARY.md
 - The 5 shell `.mjs` files retain the scaffold sentinel by design; default `check-resolvable` treats this as advisory, while `--strict` would fail until a later stage implements them.
 - Enterprise output namespaces such as `briefs/daily/` and `signals/risk/` are documented in skill frontmatter per I1 spec; `_brain-filing-rules.md` and its JSON companion were not changed in this stage.
 - The repo does not have a `gbrain` binary on PATH in this shell. `./bin/gbrain` was used for scaffold/routing probes, and `bun src/cli.ts` was used for final `routing-eval`, `check-resolvable`, and `skillpack-check` evidence.
+
+# Stage H1: Admin Dashboard 4 Pages
+
+## Status
+
+- Stage: H1
+- Branch: `ebrain-mvp`
+- Baseline: `e9db4d78`
+- Scope: admin SPA frontend only; no gbrain core, MCP, commands, or `src/ebrain/*` runtime changes.
+- Result: PASS for the allowed H1 frontend/build scope. Standalone admin `tsc -p admin/tsconfig.json` still has a pre-existing error in `admin/src/pages/Agents.tsx`, which H1 explicitly forbids editing; root `bun run typecheck` and full `bun run verify` pass.
+
+## Implementation
+
+- Added `admin/src/ebrain/pages/Dashboard.tsx` with four stat cards, enterprise-op-filtered `/admin/events` SSE activity, five app health slots, and six Dream Cycle phase rows.
+- Added `admin/src/ebrain/pages/Executives.tsx` with active/archived tabs, executive table, profile drawer calling `get_executive_context`, and create modal with the five required fields.
+- Added `admin/src/ebrain/pages/EnterpriseApps.tsx` with a five-step wizard: app type, credentials, real `testConnection` fetch step, sub-connector config, and save.
+- Added `admin/src/ebrain/pages/Ingestion.tsx` with 20+ sub-connector-ready health table, detail drawer, and manual retry action.
+- Added shared `AppLayout`, `StatCard`, and `StatusBadge` components under `admin/src/ebrain/components/`.
+- Added simple no-dependency i18n under `admin/src/ebrain/i18n/` with `zh-CN.json`, `en-US.json`, a pure helper, and a small locale hook. The four H1 pages route their main labels, headings, buttons, and table headers through i18n.
+- Extended `admin/src/api.ts` append-only after the existing `api` export with Ebrain types and helper exports: `getExecutives`, `createExecutive`, `getExecutiveContext`, `getEnterpriseApps`, `registerEnterpriseApp`, `testConnection`, `getIngestionSources`, `triggerSync`, `getStats`, and `getEbrainEventSource`.
+- Extended `admin/src/App.tsx` with hash routes `#ebrain/dashboard`, `#ebrain/executives`, `#ebrain/enterprise-apps`, and `#ebrain/ingestion`, plus matching sidebar nav entries.
+
+## Verification Evidence
+
+| Check | Result | Evidence |
+|---|---|---|
+| Start state | PASS | `git status --short --branch` showed `## ebrain-mvp...origin/ebrain-mvp`; `git rev-parse HEAD` -> `e9db4d7841222409a2944412f0fa040ed0b6709c`; `git branch --show-current` -> `ebrain-mvp` |
+| Admin build | PASS | `cd admin && bun run build` -> Vite built 47 modules and emitted `admin/dist/` successfully |
+| Root typecheck | PASS | `bun run typecheck` -> `tsc --noEmit` exited 0 |
+| Full verify | PASS | `bun run verify` -> privacy, proposal PII, test names, JSONB, source-id projection, progress, isolation, WASM, admin build, admin scope, CLI executable, system-of-record, eval glossary, synthetic corpus privacy, and typecheck all passed |
+| Vite dev serving | PASS | `cd admin && bun run dev -- --host 127.0.0.1` started at `http://127.0.0.1:5173/admin/`; localhost checks returned HTTP 200 for all four H1 page modules |
+| Browser plugin | BLOCKED | The in-app Browser skill was loaded, but the required Node REPL browser execution tool was not exposed by tool discovery in this session; local Vite HTTP checks were used instead of an interactive browser screenshot |
+| Standalone admin tsconfig | BLOCKED (pre-existing) | `cd admin && ../node_modules/.bin/tsc --noEmit -p tsconfig.json` now reports only existing `admin/src/pages/Agents.tsx:582` tab-indexing errors; H1 files produced no standalone TS errors after ES2020 fixes |
+| Charter v2 guard | PASS | `git diff e9db4d78..HEAD -- 'src/core/' 'src/mcp/' --stat` returned empty; `git diff e9db4d78..HEAD -- src/commands/ --stat` returned empty |
+| No forbidden `src/ebrain/*` changes | PASS | H1 changes are confined to `admin/src/ebrain/*`, `admin/src/App.tsx`, `admin/src/api.ts`, and this `STAGE-SUMMARY.md` |
+| No mock/storybook imports | PASS | `rg -n "mock/data|admin-ebrain-storybook|from ['\"].*mock" admin/src/ebrain admin/src/api.ts admin/src/App.tsx` returned no matches |
+| No new dependencies | PASS | No `package.json`, lockfile, or admin package metadata changed; no `bun add` was run |
+| i18n files | PASS | `admin/src/ebrain/i18n/zh-CN.json` and `admin/src/ebrain/i18n/en-US.json` exist and are consumed through `useEbrainI18n`/`translate` |
+
+## Files Changed
+
+```text
+admin/src/App.tsx
+admin/src/api.ts
+admin/src/ebrain/components/AppLayout.tsx
+admin/src/ebrain/components/StatCard.tsx
+admin/src/ebrain/components/StatusBadge.tsx
+admin/src/ebrain/hooks/useEbrainI18n.ts
+admin/src/ebrain/i18n/en-US.json
+admin/src/ebrain/i18n/i18n.ts
+admin/src/ebrain/i18n/json.d.ts
+admin/src/ebrain/i18n/zh-CN.json
+admin/src/ebrain/pages/Dashboard.tsx
+admin/src/ebrain/pages/EnterpriseApps.tsx
+admin/src/ebrain/pages/Executives.tsx
+admin/src/ebrain/pages/Ingestion.tsx
+STAGE-SUMMARY.md
+```
+
+## Runtime Notes
+
+- H1 intentionally does not add new Express/admin middleware because the stage forbids `src/commands/*` changes. The new frontend helper uses an admin-scoped operation bridge path, `/admin/api/ebrain/ops/:operation`, for existing Ebrain ops and concrete admin resource paths for create/register/test/retry actions.
+- The current baseline does not expose those H1 admin resource paths in `src/commands/serve-http.ts`; therefore this stage proves frontend wiring, build, route serving, and real fetch calls, but does not claim backend runtime data artifacts for create/register/test/retry.
+- Dashboard SSE uses the existing `/admin/events` EventSource and filters enterprise operations client-side: `list_executives`, `get_executive_context`, `enterprise_ingest_status`, `detect_enterprise_conflicts`, `enterprise_*`, `*executive*`, and `*ebrain*`.
+- `detect_enterprise_conflicts` is the only available H1 conflict-count source in the listed ops. `getStats()` calls it via the Ebrain op helper; it should be replaced by a pure read counter if a later admin backend stage adds one.
+- The frontend does not persist credentials, push preferences, or profile payloads to localStorage/sessionStorage. Wizard credentials live only in React component state until the submit/test calls complete or the modal closes.
