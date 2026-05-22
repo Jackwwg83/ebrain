@@ -137,6 +137,16 @@ export interface EbrainStats {
   appHealth: EbrainEnterpriseApp[];
 }
 
+interface EbrainStatsResponse {
+  active_executives: number;
+  briefs_today: number;
+  brief_success_rate: number | null;
+  open_conflicts: number;
+  last_cycle_at: string | null;
+  cycle_status?: 'success' | 'warn' | 'error' | 'idle';
+  cycle_phases: Array<{ phase: string; status: 'success' | 'warn' | 'error' | 'idle'; updated_at: string | null }>;
+}
+
 function unwrapOperationResponse<T>(payload: unknown): T {
   if (payload && typeof payload === 'object' && 'result' in payload) {
     return (payload as { result: T }).result;
@@ -249,31 +259,23 @@ export async function triggerSync(sourceId: string): Promise<{ queued: boolean; 
 }
 
 export async function getStats(): Promise<EbrainStats> {
-  const [executives, apps, conflicts] = await Promise.all([
-    getExecutives({ activeOnly: true, limit: 500 }),
+  const [stats, apps] = await Promise.all([
+    apiFetch('/admin/api/ebrain/stats') as Promise<EbrainStatsResponse>,
     getEnterpriseApps(),
-    callEbrainOperation<{ conflictsDetected?: number; conflictsInserted?: number; samples?: unknown[] }>(
-      'detect_enterprise_conflicts',
-      { limit: 1 },
-    ),
   ]);
-  const pendingConflictCount = conflicts.conflictsDetected ?? conflicts.conflictsInserted ?? conflicts.samples?.length ?? 0;
   return {
-    activeExecutiveCount: executives.length,
-    briefsToday: null,
-    briefSuccessRate: null,
-    pendingConflictCount,
+    activeExecutiveCount: stats.active_executives,
+    briefsToday: stats.briefs_today,
+    briefSuccessRate: stats.brief_success_rate,
+    pendingConflictCount: stats.open_conflicts,
     dreamCycle: {
-      status: 'idle',
-      lastRunAt: null,
-      phases: [
-        { phase: 'ingest', status: 'idle', updatedAt: null },
-        { phase: 'normalize', status: 'idle', updatedAt: null },
-        { phase: 'extract', status: 'idle', updatedAt: null },
-        { phase: 'conflicts', status: pendingConflictCount > 0 ? 'warn' : 'idle', updatedAt: null },
-        { phase: 'briefs', status: 'idle', updatedAt: null },
-        { phase: 'push', status: 'idle', updatedAt: null },
-      ],
+      status: stats.cycle_status ?? (stats.open_conflicts > 0 ? 'warn' : stats.last_cycle_at ? 'success' : 'idle'),
+      lastRunAt: stats.last_cycle_at,
+      phases: stats.cycle_phases.map(phase => ({
+        phase: phase.phase,
+        status: phase.status,
+        updatedAt: phase.updated_at,
+      })),
     },
     appHealth: apps,
   };

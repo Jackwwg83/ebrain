@@ -11,7 +11,9 @@ const dictionaries: Record<Locale, Record<string, string>> = {
 };
 
 export function initialLocale(): Locale {
-  return navigator.language.toLowerCase().startsWith('zh') ? 'zh-CN' : 'en-US';
+  const persisted = localStorage.getItem('ebrain.locale');
+  if (persisted === 'zh-CN' || persisted === 'en-US') return persisted;
+  return 'zh-CN';
 }
 
 export function translate(locale: Locale, key: string, vars: Vars = {}): string {

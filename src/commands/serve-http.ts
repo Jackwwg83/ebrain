@@ -686,6 +686,108 @@ export async function runServeHttp(engine: BrainEngine, options: ServeHttpOption
     res.status(result.status).json(result.body);
   });
 
+  // Admin Ebrain Ops Bridge. This trusted admin-only route intentionally
+  // allowlists the small H1 read surface instead of exposing every gbrain op.
+  const EBRAIN_ADMIN_OPS_ALLOWLIST = new Set([
+    'list_executives',
+    'get_executive_context',
+    'enterprise_ingest_status',
+  ]);
+
+  function parseBridgeParams(body: unknown): Record<string, unknown> {
+    if (!body || typeof body !== 'object' || Array.isArray(body)) return {};
+    const record = body as Record<string, unknown>;
+    const nested = record.params;
+    if (nested && typeof nested === 'object' && !Array.isArray(nested)) {
+      return nested as Record<string, unknown>;
+    }
+    return record;
+  }
+
+  function parseToolResultPayload(result: { content?: Array<{ text?: string }> }): unknown {
+    const text = result.content?.[0]?.text;
+    if (!text) return null;
+    try {
+      return JSON.parse(text);
+    } catch {
+      return text;
+    }
+  }
+
+  app.post('/admin/api/ebrain/ops/:op', requireAdmin, express.json(), async (req: Request, res: Response) => {
+    const rawOp = req.params.op;
+    const opName = Array.isArray(rawOp) ? rawOp[0] : rawOp;
+    if (!opName || !EBRAIN_ADMIN_OPS_ALLOWLIST.has(opName)) {
+      res.status(403).json({ error: 'op_not_in_ebrain_admin_allowlist', op: opName ?? null });
+      return;
+    }
+
+    try {
+      const result = await dispatchToolCall(engine, opName, parseBridgeParams(req.body), {
+        remote: false,
+      });
+      const payload = parseToolResultPayload(result);
+      if (result.isError) {
+        res.status(500).json({ error: 'op_execution_failed', result: payload });
+        return;
+      }
+      res.json({ ok: true, result: payload });
+    } catch (err) {
+      res.status(500).json({
+        error: 'op_execution_failed',
+        message: err instanceof Error ? err.message : String(err),
+      });
+    }
+  });
+
+  app.get('/admin/api/ebrain/stats', requireAdmin, async (_req: Request, res: Response) => {
+    try {
+      const [row] = await engine.executeRaw<{
+        active_executives: number | string;
+        briefs_today: number | string;
+        open_conflicts: number | string;
+        last_cycle_at: string | Date | null;
+      }>(
+        `SELECT
+           (SELECT COUNT(*)::int FROM executives WHERE deleted_at IS NULL AND active = true) AS active_executives,
+           (SELECT COUNT(*)::int FROM pages WHERE slug LIKE 'briefs/daily/%' AND DATE(updated_at) = CURRENT_DATE) AS briefs_today,
+           (SELECT COUNT(*)::int FROM enterprise_fact_conflicts WHERE status = 'open') AS open_conflicts,
+           (SELECT MAX(updated_at) FROM minion_jobs WHERE name = 'ebrain-enterprise-cycle' AND status = 'completed') AS last_cycle_at`,
+      );
+      const activeExecutives = Number(row?.active_executives ?? 0);
+      const briefsToday = Number(row?.briefs_today ?? 0);
+      const openConflicts = Number(row?.open_conflicts ?? 0);
+      const briefSuccessRate = activeExecutives > 0
+        ? Math.min(1, briefsToday / activeExecutives)
+        : null;
+      const lastCycleAt = row?.last_cycle_at instanceof Date
+        ? row.last_cycle_at.toISOString()
+        : row?.last_cycle_at ?? null;
+      const basePhaseStatus = lastCycleAt ? 'success' : 'idle';
+      res.json({
+        active_executives: activeExecutives,
+        briefs_today: briefsToday,
+        brief_success_rate: briefSuccessRate,
+        open_conflicts: openConflicts,
+        last_cycle_at: lastCycleAt,
+        cycle_status: openConflicts > 0 ? 'warn' : basePhaseStatus,
+        cycle_phases: [
+          { phase: 'ingest', status: basePhaseStatus, updated_at: lastCycleAt },
+          { phase: 'normalize', status: basePhaseStatus, updated_at: lastCycleAt },
+          { phase: 'extract', status: basePhaseStatus, updated_at: lastCycleAt },
+          { phase: 'conflicts', status: openConflicts > 0 ? 'warn' : basePhaseStatus, updated_at: lastCycleAt },
+          { phase: 'briefs', status: basePhaseStatus, updated_at: lastCycleAt },
+          { phase: 'push', status: basePhaseStatus, updated_at: lastCycleAt },
+        ],
+      });
+    } catch (err) {
+      res.status(500).json({
+        error: 'ebrain_stats_failed',
+        message: err instanceof Error ? err.message : String(err),
+      });
+    }
+  });
+
   // v0.36.1.0 (T15 / E6 / D23) — Calibration tab data endpoints.
   // Server-rendered SVG charts; admin SPA renders via TrustedSVG wrapper.
   // v0.36.1.0 (TD3) — pattern drill-down. Returns the source takes that

@@ -2234,8 +2234,32 @@ STAGE-SUMMARY.md
 
 ## Runtime Notes
 
-- H1 intentionally does not add new Express/admin middleware because the stage forbids `src/commands/*` changes. The new frontend helper uses an admin-scoped operation bridge path, `/admin/api/ebrain/ops/:operation`, for existing Ebrain ops and concrete admin resource paths for create/register/test/retry actions.
-- The current baseline does not expose those H1 admin resource paths in `src/commands/serve-http.ts`; therefore this stage proves frontend wiring, build, route serving, and real fetch calls, but does not claim backend runtime data artifacts for create/register/test/retry.
+- Initial H1 intentionally did not add new Express/admin middleware because that stage forbade `src/commands/*` changes. The frontend helper used an admin-scoped operation bridge path, `/admin/api/ebrain/ops/:operation`, for existing Ebrain ops and concrete admin resource paths for create/register/test/retry actions.
+- Initial H1 baseline did not expose those H1 admin resource paths in `src/commands/serve-http.ts`; the Fixwave R1 section below records the later backend read bridge and stats endpoint.
 - Dashboard SSE uses the existing `/admin/events` EventSource and filters enterprise operations client-side: `list_executives`, `get_executive_context`, `enterprise_ingest_status`, `detect_enterprise_conflicts`, `enterprise_*`, `*executive*`, and `*ebrain*`.
-- `detect_enterprise_conflicts` is the only available H1 conflict-count source in the listed ops. `getStats()` calls it via the Ebrain op helper; it should be replaced by a pure read counter if a later admin backend stage adds one.
+- Initial H1 used `detect_enterprise_conflicts` as the only available conflict-count source; Fixwave R1 replaces that Dashboard polling path with a pure read counter.
 - The frontend does not persist credentials, push preferences, or profile payloads to localStorage/sessionStorage. Wizard credentials live only in React component state until the submit/test calls complete or the modal closes.
+
+## Fixwave R1
+
+- Baseline: H1 commit `9f683434` plus reviewer report `/Users/jackwu/Projects/EBRAIN_STAGE_H1_REVIEW.md`.
+- Fixed H1-H-001 by adding an admin-authenticated Ebrain ops bridge in `src/commands/serve-http.ts` for the H1 read allowlist only: `list_executives`, `get_executive_context`, and `enterprise_ingest_status`. The bridge calls `dispatchToolCall(..., { remote: false })`, so the admin UI can reach localOnly admin reads without exposing the full gbrain op surface.
+- Fixed H1-M-001/H1-M-002 by adding `/admin/api/ebrain/stats` as a pure SQL aggregate for active executives, today's briefs, derived brief coverage rate, open conflicts, and last completed enterprise cycle time. `admin/src/api.ts:getStats()` now reads this endpoint and no longer polls `detect_enterprise_conflicts`.
+- Fixed H1-L-001 by making `zh-CN` the default locale unless `localStorage['ebrain.locale']` is explicitly `zh-CN` or `en-US`; the locale hook persists user changes back to that key.
+- Added `test/serve-http-ebrain-bridge.test.ts` covering admin-cookie enforcement, allowlist rejection for `detect_enterprise_conflicts`, successful PGLite bridge reads, remote=false behavior for `enterprise_ingest_status`, and the stats endpoint payload.
+
+Fixwave verification:
+
+| Check | Result | Evidence |
+|---|---|---|
+| Core HTTP transport gate | PASS | `bun test test/http-transport.test.ts` -> 24 pass, 0 fail, 71 expect() calls |
+| Admin bridge PGLite E2E | PASS | `bun test test/serve-http-ebrain-bridge.test.ts` -> 5 pass, 0 fail, 14 expect() calls; real `gbrain serve --http` with PGLite returned `[]` for allowlisted reads and aggregate stats JSON |
+| Admin build | PASS | `cd admin && bun run build` -> Vite built 47 modules and emitted `dist/assets/index-BoEMKTfx.js` |
+| Root typecheck | PASS | `bun run typecheck` -> `tsc --noEmit` exited 0 |
+| Full verify | PASS | `bun run verify` -> all checks through synthetic corpus privacy and `tsc --noEmit` passed |
+| Charter v2 guard | PASS | `git diff 9f683434 -- 'src/core/' 'src/mcp/' --stat` returned empty; `git diff 9f683434 -- src/commands/serve-http.ts \| grep -cE '^-[^-]'` -> 0 |
+
+Fixwave runtime notes:
+
+- The bridge deliberately does not allow `detect_enterprise_conflicts`, so opening Dashboard cannot run the mutating detector through polling.
+- The H1 concrete resource action paths (`/admin/api/ebrain/executives`, enterprise-app register/test, ingestion-source sync) remain outside this R1 bridge allowlist; R1 validates the requested read bridge and stats path without changing G1 op internals or adding schema/dependencies.
