@@ -1,0 +1,70 @@
+[
+  {
+    "id": "crm-opportunity-001",
+    "title": "CRM opportunity: expansion-alpha",
+    "modifiedTime": "2026-05-21T09:00:00.000Z",
+    "bodyMarkdown": "## Opportunity\n\nSynthetic expansion opportunity amount: 420000 USD.",
+    "entity": {
+      "slug": "deals/expansion-alpha-example",
+      "type": "deal",
+      "title": "Expansion Alpha Example",
+      "aliases": [
+        "Expansion Alpha Example",
+        "expansion-alpha"
+      ]
+    },
+    "facts": [
+      {
+        "claim": "Expansion Alpha Example has K1 fixture coverage for crm-opportunities.",
+        "kind": "fact",
+        "confidence": 0.91,
+        "visibility": "world",
+        "notability": "medium",
+        "validFrom": "2026-05-20",
+        "source": "crm-opportunities",
+        "claimMetric": "revenue",
+        "claimValue": 420000,
+        "claimUnit": "USD",
+        "claimPeriod": "annual"
+      }
+    ],
+    "raw": {
+      "synthetic": true,
+      "fixtureVersion": "k1"
+    }
+  },
+  {
+    "id": "crm-opportunity-002",
+    "title": "CRM opportunity: renewal-beta",
+    "modifiedTime": "2026-05-22T010:00:00.000Z",
+    "bodyMarkdown": "## Opportunity\n\nSynthetic renewal opportunity amount: 180000 USD.",
+    "entity": {
+      "slug": "deals/renewal-beta-example",
+      "type": "deal",
+      "title": "Renewal Beta Example",
+      "aliases": [
+        "Renewal Beta Example",
+        "renewal-beta"
+      ]
+    },
+    "facts": [
+      {
+        "claim": "Renewal Beta Example has K1 fixture coverage for crm-opportunities.",
+        "kind": "fact",
+        "confidence": 0.91,
+        "visibility": "world",
+        "notability": "medium",
+        "validFrom": "2026-05-20",
+        "source": "crm-opportunities",
+        "claimMetric": "revenue",
+        "claimValue": 180000,
+        "claimUnit": "USD",
+        "claimPeriod": "annual"
+      }
+    ],
+    "raw": {
+      "synthetic": true,
+      "fixtureVersion": "k1"
+    }
+  }
+]

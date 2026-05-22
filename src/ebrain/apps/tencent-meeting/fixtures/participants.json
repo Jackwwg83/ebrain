@@ -1,9 +1,9 @@
 [
   {
-    "id": "fs-msg-001",
-    "title": "Feishu executive channel thread",
+    "id": "tm-participant-001",
+    "title": "Tencent Meeting participant roster: revenue review",
     "modifiedTime": "2026-05-21T09:00:00.000Z",
-    "bodyMarkdown": "## Messages\n\n- ops-lead-example: publish the fixture smoke report.\n- finance-lead-example: confirm no external API calls.",
+    "bodyMarkdown": "## Participants\n\n- exec-a\n- finance-lead-example",
     "entity": {
       "slug": "companies/acme-example",
       "type": "company",
@@ -15,13 +15,13 @@
     },
     "facts": [
       {
-        "claim": "Acme Example has K1 fixture coverage for feishu-im.",
+        "claim": "Acme Example has K1 fixture coverage for tencent-meeting-participants.",
         "kind": "fact",
         "confidence": 0.91,
         "visibility": "world",
         "notability": "medium",
         "validFrom": "2026-05-20",
-        "source": "feishu-im"
+        "source": "tencent-meeting-participants"
       }
     ],
     "raw": {
@@ -30,10 +30,10 @@
     }
   },
   {
-    "id": "fs-msg-002",
-    "title": "Feishu customer escalation thread",
+    "id": "tm-participant-002",
+    "title": "Tencent Meeting participant roster: product risk",
     "modifiedTime": "2026-05-22T010:00:00.000Z",
-    "bodyMarkdown": "## Messages\n\nSynthetic escalation thread for customer-success handoff.",
+    "bodyMarkdown": "## Participants\n\n- exec-a\n- product-lead-example",
     "entity": {
       "slug": "companies/acme-example",
       "type": "company",
@@ -45,13 +45,13 @@
     },
     "facts": [
       {
-        "claim": "Acme Example has K1 fixture coverage for feishu-im.",
+        "claim": "Acme Example has K1 fixture coverage for tencent-meeting-participants.",
         "kind": "fact",
         "confidence": 0.91,
         "visibility": "world",
         "notability": "medium",
         "validFrom": "2026-05-20",
-        "source": "feishu-im"
+        "source": "tencent-meeting-participants"
       }
     ],
     "raw": {

@@ -2523,3 +2523,67 @@ tests/ebrain/jobs/circuit-breaker-reset.test.ts
 tests/ebrain/observability/metrics.test.ts
 STAGE-SUMMARY.md
 ```
+
+# Stage K1: Fixtures Complete + PGLite Smoke
+
+## Status
+
+- Stage: K1
+- Branch: `ebrain-mvp`
+- Baseline: `715aedba`
+- Scope: EnterpriseApp fixture completeness plus local PGLite smoke coverage for all fixture-backed sub-connectors.
+- Result: Implementation complete with fixture-only PGLite smoke, v200 migration, import-file page import, enterprise ingest DB artifacts, facts extraction, entity alias refresh, core HTTP gate, typecheck, and full verify passing.
+
+## Implementation
+
+- Completed app fixture directories under `src/ebrain/apps/*/fixtures/`:
+  - DingTalk: 6 JSON fixture files covering IM, docs, drive, calendar, meeting, and approvals.
+  - Feishu: 6 JSON fixture files covering docs, IM/messages, calendar, mail, wiki, and meetings.
+  - WeCom: 5 JSON fixture files covering messages, contacts, meetings, departments, and approvals.
+  - CRM: 5 JSON fixture files covering accounts, contacts, opportunities, leads, and activities.
+  - Tencent Meeting: 5 JSON fixture files covering meetings, recordings, participants, transcripts, and attendance.
+- Added `tests/e2e/ebrain-pglite-smoke.test.ts`.
+  - Starts one local PGLite engine in `beforeAll`, runs `initSchema()` through v200+, and seeds the `enterprise` source.
+  - Loads 27 fixture-backed connector descriptors from disk using `Bun.file`; no external vendor fetches.
+  - Runs the gbrain import path via `importFromContent(..., { noEmbed: true, sourceId: 'enterprise' })` for fixture pages and synthetic entity pages.
+  - Writes real rows to `enterprise_apps`, `enterprise_ingest_sources`, `enterprise_ingest_objects`, and `pages` enterprise columns.
+  - Runs `runExtractFacts` against imported fixture pages and `refreshEntityAliases` across all shards.
+  - Installs a fetch guard that throws on network access, proving the smoke remains fixture-only.
+- Added `scripts/ebrain-smoke.sh` with `set -euo pipefail`, friendly pass/fail summary, and exit-code propagation.
+- Added package script `ebrain:smoke` pointing to `bash scripts/ebrain-smoke.sh`.
+
+## Verification Evidence
+
+| Check | Result | Evidence |
+|---|---|---|
+| K1 PGLite smoke | PASS | `bun run ebrain:smoke` -> PGLite `Schema version 1 -> 200`, 71 migrations applied, 1 test pass, 0 fail, 177 expect() calls. Smoke imported fixture pages, wrote enterprise ingest rows, extracted facts, refreshed aliases, and exited 0. |
+| Fixture coverage | PASS | Smoke manifest covers 27 fixture-backed sub-connectors across 5 apps: DingTalk 6, Feishu 6, WeCom 5, CRM 5, Tencent Meeting 5. Fixture record count is 123 total. |
+| Runtime artifact assertions | PASS | Smoke asserts `enterprise_ingest_sources = 27`, `enterprise_ingest_objects = recordsImported`, fixture `pages = recordsImported`, `facts >= recordsImported`, `enterprise_entity_aliases >= entity count`, and non-empty `enterprise_fact_claims_view`. |
+| No external network | PASS | Smoke overrides `globalThis.fetch` to throw; all fixture loads use local `Bun.file` and all page imports pass `noEmbed: true`. |
+| Core HTTP transport gate | PASS | `bun test test/http-transport.test.ts` -> 24 pass, 0 fail, 71 expect() calls. |
+| Root typecheck | PASS | `bun run typecheck` -> `tsc --noEmit` exited 0. |
+| Full verify | PASS | `bun run verify` -> privacy, proposal PII, test names, JSONB, source-id projection, progress, test isolation, WASM, admin build, admin scope drift, CLI executable, system-of-record, eval glossary, synthetic corpus privacy, and typecheck all passed. |
+| Charter v2 core guard | PASS | `git diff 715aedba..HEAD -- 'src/core/' 'src/mcp/' --stat` returned empty. |
+| CLI entry guard | PASS | `git diff 715aedba..HEAD -- src/commands/ --stat` returned empty. |
+| No full unit suite | PASS | Did not run `bun test test/` full suite per K1 instruction/OOM warning. |
+
+## Runtime Evidence Notes
+
+- K1 runtime evidence is local PGLite, not mocked table assertions only: the smoke ran migrations, imported real fixture page content through `importFromContent`, inspected produced DB rows, reconciled facts from real facts fences, and read `enterprise_fact_claims_view`.
+- DingTalk already has concrete C2 adapters; K1 still imports the fixtures through the gbrain import-file path to keep the smoke common across all 5 apps.
+- Feishu/WeCom/CRM/Tencent Meeting adapter wiring is intentionally not expanded in K1. Their smoke path validates fixture parse plus DB import/write artifacts until C3/C4-style concrete adapters exist.
+- No schema migration, dependency, `src/core/`, `src/mcp/`, `src/commands/`, `admin/`, `skills/`, `deploy/`, jobs, conflicts, or cycle business-code changes were made.
+
+## Files Changed
+
+```text
+package.json
+scripts/ebrain-smoke.sh
+tests/e2e/ebrain-pglite-smoke.test.ts
+src/ebrain/apps/dingtalk/fixtures/*
+src/ebrain/apps/feishu/fixtures/*
+src/ebrain/apps/wecom/fixtures/*
+src/ebrain/apps/crm/fixtures/*
+src/ebrain/apps/tencent-meeting/fixtures/*
+STAGE-SUMMARY.md
+```

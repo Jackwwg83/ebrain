@@ -1,0 +1,62 @@
+[
+  {
+    "id": "crm-lead-001",
+    "title": "CRM lead: inbound-ai-example",
+    "modifiedTime": "2026-05-21T09:00:00.000Z",
+    "bodyMarkdown": "## Lead\n\nSynthetic lead source is webinar.",
+    "entity": {
+      "slug": "companies/inbound-ai-example",
+      "type": "company",
+      "title": "Inbound AI Example",
+      "aliases": [
+        "Inbound AI Example",
+        "inbound-ai"
+      ]
+    },
+    "facts": [
+      {
+        "claim": "Inbound AI Example has K1 fixture coverage for crm-leads.",
+        "kind": "fact",
+        "confidence": 0.91,
+        "visibility": "world",
+        "notability": "medium",
+        "validFrom": "2026-05-20",
+        "source": "crm-leads"
+      }
+    ],
+    "raw": {
+      "synthetic": true,
+      "fixtureVersion": "k1"
+    }
+  },
+  {
+    "id": "crm-lead-002",
+    "title": "CRM lead: partner-referral-example",
+    "modifiedTime": "2026-05-22T010:00:00.000Z",
+    "bodyMarkdown": "## Lead\n\nSynthetic lead source is partner referral.",
+    "entity": {
+      "slug": "companies/partner-referral-example",
+      "type": "company",
+      "title": "Partner Referral Example",
+      "aliases": [
+        "Partner Referral Example",
+        "partner-referral"
+      ]
+    },
+    "facts": [
+      {
+        "claim": "Partner Referral Example has K1 fixture coverage for crm-leads.",
+        "kind": "fact",
+        "confidence": 0.91,
+        "visibility": "world",
+        "notability": "medium",
+        "validFrom": "2026-05-20",
+        "source": "crm-leads"
+      }
+    ],
+    "raw": {
+      "synthetic": true,
+      "fixtureVersion": "k1"
+    }
+  }
+]

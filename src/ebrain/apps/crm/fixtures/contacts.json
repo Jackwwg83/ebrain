@@ -1,0 +1,62 @@
+[
+  {
+    "id": "crm-contact-001",
+    "title": "CRM contact: buyer-a-example",
+    "modifiedTime": "2026-05-21T09:00:00.000Z",
+    "bodyMarkdown": "## Contact\n\nSynthetic buyer contact for account planning.",
+    "entity": {
+      "slug": "people/buyer-a-example",
+      "type": "person",
+      "title": "Buyer A Example",
+      "aliases": [
+        "Buyer A Example",
+        "buyer-a"
+      ]
+    },
+    "facts": [
+      {
+        "claim": "Buyer A Example has K1 fixture coverage for crm-contacts.",
+        "kind": "fact",
+        "confidence": 0.91,
+        "visibility": "world",
+        "notability": "medium",
+        "validFrom": "2026-05-20",
+        "source": "crm-contacts"
+      }
+    ],
+    "raw": {
+      "synthetic": true,
+      "fixtureVersion": "k1"
+    }
+  },
+  {
+    "id": "crm-contact-002",
+    "title": "CRM contact: champion-a-example",
+    "modifiedTime": "2026-05-22T010:00:00.000Z",
+    "bodyMarkdown": "## Contact\n\nSynthetic champion contact for renewal tracking.",
+    "entity": {
+      "slug": "people/champion-a-example",
+      "type": "person",
+      "title": "Champion A Example",
+      "aliases": [
+        "Champion A Example",
+        "champion-a"
+      ]
+    },
+    "facts": [
+      {
+        "claim": "Champion A Example has K1 fixture coverage for crm-contacts.",
+        "kind": "fact",
+        "confidence": 0.91,
+        "visibility": "world",
+        "notability": "medium",
+        "validFrom": "2026-05-20",
+        "source": "crm-contacts"
+      }
+    ],
+    "raw": {
+      "synthetic": true,
+      "fixtureVersion": "k1"
+    }
+  }
+]

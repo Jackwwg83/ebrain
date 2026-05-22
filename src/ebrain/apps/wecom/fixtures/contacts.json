@@ -1,0 +1,62 @@
+[
+  {
+    "id": "wc-contact-001",
+    "title": "WeCom contact: exec-a",
+    "modifiedTime": "2026-05-21T09:00:00.000Z",
+    "bodyMarkdown": "## Contact\n\n- role: executive sponsor\n- department: operations",
+    "entity": {
+      "slug": "people/exec-a-example",
+      "type": "person",
+      "title": "Exec A Example",
+      "aliases": [
+        "Exec A Example",
+        "exec-a"
+      ]
+    },
+    "facts": [
+      {
+        "claim": "Exec A Example has K1 fixture coverage for wecom-contacts.",
+        "kind": "fact",
+        "confidence": 0.91,
+        "visibility": "world",
+        "notability": "medium",
+        "validFrom": "2026-05-20",
+        "source": "wecom-contacts"
+      }
+    ],
+    "raw": {
+      "synthetic": true,
+      "fixtureVersion": "k1"
+    }
+  },
+  {
+    "id": "wc-contact-002",
+    "title": "WeCom contact: ops-lead-example",
+    "modifiedTime": "2026-05-22T010:00:00.000Z",
+    "bodyMarkdown": "## Contact\n\n- role: operations lead\n- department: operations",
+    "entity": {
+      "slug": "people/ops-lead-example",
+      "type": "person",
+      "title": "Ops Lead Example",
+      "aliases": [
+        "Ops Lead Example",
+        "ops-lead-example"
+      ]
+    },
+    "facts": [
+      {
+        "claim": "Ops Lead Example has K1 fixture coverage for wecom-contacts.",
+        "kind": "fact",
+        "confidence": 0.91,
+        "visibility": "world",
+        "notability": "medium",
+        "validFrom": "2026-05-20",
+        "source": "wecom-contacts"
+      }
+    ],
+    "raw": {
+      "synthetic": true,
+      "fixtureVersion": "k1"
+    }
+  }
+]

@@ -1,9 +1,9 @@
 [
   {
-    "id": "fs-msg-001",
-    "title": "Feishu executive channel thread",
+    "id": "fs-doc-001",
+    "title": "Feishu board packet synthetic memo",
     "modifiedTime": "2026-05-21T09:00:00.000Z",
-    "bodyMarkdown": "## Messages\n\n- ops-lead-example: publish the fixture smoke report.\n- finance-lead-example: confirm no external API calls.",
+    "bodyMarkdown": "## Memo\n\nSynthetic board packet covers operating review notes.",
     "entity": {
       "slug": "companies/acme-example",
       "type": "company",
@@ -15,13 +15,13 @@
     },
     "facts": [
       {
-        "claim": "Acme Example has K1 fixture coverage for feishu-im.",
+        "claim": "Acme Example has K1 fixture coverage for feishu-docs.",
         "kind": "fact",
         "confidence": 0.91,
         "visibility": "world",
         "notability": "medium",
         "validFrom": "2026-05-20",
-        "source": "feishu-im"
+        "source": "feishu-docs"
       }
     ],
     "raw": {
@@ -30,10 +30,10 @@
     }
   },
   {
-    "id": "fs-msg-002",
-    "title": "Feishu customer escalation thread",
+    "id": "fs-doc-002",
+    "title": "Feishu enterprise rollout SOP",
     "modifiedTime": "2026-05-22T010:00:00.000Z",
-    "bodyMarkdown": "## Messages\n\nSynthetic escalation thread for customer-success handoff.",
+    "bodyMarkdown": "## SOP\n\nSynthetic SOP covers admin rollout and source ownership.",
     "entity": {
       "slug": "companies/acme-example",
       "type": "company",
@@ -45,13 +45,13 @@
     },
     "facts": [
       {
-        "claim": "Acme Example has K1 fixture coverage for feishu-im.",
+        "claim": "Acme Example has K1 fixture coverage for feishu-docs.",
         "kind": "fact",
         "confidence": 0.91,
         "visibility": "world",
         "notability": "medium",
         "validFrom": "2026-05-20",
-        "source": "feishu-im"
+        "source": "feishu-docs"
       }
     ],
     "raw": {

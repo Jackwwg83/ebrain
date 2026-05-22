@@ -1,0 +1,62 @@
+[
+  {
+    "id": "wc-dept-001",
+    "title": "WeCom department: operations",
+    "modifiedTime": "2026-05-21T09:00:00.000Z",
+    "bodyMarkdown": "## Department\n\nSynthetic department hierarchy fixture.",
+    "entity": {
+      "slug": "projects/ops-system-example",
+      "type": "project",
+      "title": "Ops System Example",
+      "aliases": [
+        "Ops System Example",
+        "ops-system"
+      ]
+    },
+    "facts": [
+      {
+        "claim": "Ops System Example has K1 fixture coverage for wecom-departments.",
+        "kind": "fact",
+        "confidence": 0.91,
+        "visibility": "world",
+        "notability": "medium",
+        "validFrom": "2026-05-20",
+        "source": "wecom-departments"
+      }
+    ],
+    "raw": {
+      "synthetic": true,
+      "fixtureVersion": "k1"
+    }
+  },
+  {
+    "id": "wc-dept-002",
+    "title": "WeCom department: customer success",
+    "modifiedTime": "2026-05-22T010:00:00.000Z",
+    "bodyMarkdown": "## Department\n\nSynthetic customer success hierarchy fixture.",
+    "entity": {
+      "slug": "projects/customer-success-example",
+      "type": "project",
+      "title": "Customer Success Example",
+      "aliases": [
+        "Customer Success Example",
+        "cs-example"
+      ]
+    },
+    "facts": [
+      {
+        "claim": "Customer Success Example has K1 fixture coverage for wecom-departments.",
+        "kind": "fact",
+        "confidence": 0.91,
+        "visibility": "world",
+        "notability": "medium",
+        "validFrom": "2026-05-20",
+        "source": "wecom-departments"
+      }
+    ],
+    "raw": {
+      "synthetic": true,
+      "fixtureVersion": "k1"
+    }
+  }
+]
