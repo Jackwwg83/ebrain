@@ -2587,3 +2587,62 @@ src/ebrain/apps/crm/fixtures/*
 src/ebrain/apps/tencent-meeting/fixtures/*
 STAGE-SUMMARY.md
 ```
+
+# Stage K2: Postgres End-to-End Integration Testbed
+
+## Status
+
+- Stage: K2
+- Branch: `ebrain-mvp`
+- Baseline: `e68159d2`
+- Scope: test-only K2 integration harness: Postgres pgvector compose testbed, one 9-step Ebrain full-flow E2E test, runner script, and package script.
+- Result: Implementation complete with typecheck, verify, core HTTP gate, script syntax, compose config, and no-DATABASE_URL skip behavior passing. Full Docker-backed E2E execution is blocked on this workstation because the Docker daemon socket is unavailable; per K2 instruction, the test uses the existing skip-if-`DATABASE_URL` pattern and this caveat is recorded here.
+
+## Implementation
+
+- Added `docker-compose.ebrain-test.yml` with a single `pgvector/pgvector:pg16` Postgres service, database `ebrain_e2e`, host port `5434`, and `pg_isready` healthcheck.
+- Added `scripts/run-e2e-ebrain.sh` with `set -euo pipefail`, compose v2/v1 detection, pre/post cleanup via `docker compose down --volumes --remove-orphans`, readiness polling, a forced local `DATABASE_URL=postgresql://postgres:postgres@localhost:5434/ebrain_e2e`, and exit-code propagation.
+- Added `tests/e2e/ebrain-full-flow.test.ts` with the K2 9-step flow:
+  - verifies live Postgres/pgvector target and v200+ migration state,
+  - creates 5 executives through `createExecutive`,
+  - inserts 5 mock EnterpriseApps and 5 direct `enterprise_oauth_tokens` rows without vendor OAuth,
+  - imports 5 K1 fixture connector sets through `importFromContent(..., noEmbed: true, sourceId: enterprise)`,
+  - runs the F2 enterprise-cycle parent fan-out and all 8 shard handlers, asserting 6 phases per shard plus facts/conflict DB artifacts,
+  - simulates a Feishu `@brain` event through the D2 IM webhook router and asserts the mocked subagent enqueue payload,
+  - runs executive brief generation for all 5 executives with the E2 stub and real `pushMorningBrief` routing into a mock `BotAdapter.pushToUser`,
+  - starts the real HTTP admin server and calls `/admin/api/ebrain/stats`, asserting active executives, today's briefs, open conflicts, last cycle timestamp, and cycle phase payload.
+- Added package script `ebrain:e2e` pointing to `bash scripts/run-e2e-ebrain.sh`.
+
+## Verification Evidence
+
+| Check | Result | Evidence |
+|---|---|---|
+| Compose config syntax | PASS | `docker compose -f docker-compose.ebrain-test.yml config` rendered service `postgres`, image `pgvector/pgvector:pg16`, DB `ebrain_e2e`, and host port `5434`. |
+| Runner shell syntax | PASS | `bash -n scripts/run-e2e-ebrain.sh` exited 0. |
+| K2 test skip guard | PASS | `bun test tests/e2e/ebrain-full-flow.test.ts --timeout=1000` with no `DATABASE_URL` -> 0 pass, 2 skip, 0 fail. |
+| K2 Docker-backed full flow | BLOCKED LOCALLY | `bun run ebrain:e2e` failed before tests because Docker daemon socket `/Users/jackwu/.docker/run/docker.sock` does not exist (`connect: no such file or directory`). No vendor API or LLM call was attempted. |
+| Core HTTP transport gate | PASS | `bun test test/http-transport.test.ts` -> 24 pass, 0 fail, 71 expect() calls. |
+| Root typecheck | PASS | `bun run typecheck` -> `tsc --noEmit` exited 0. |
+| Full verify | PASS | `bun run verify` -> privacy, proposal PII, test names, JSONB, source-id projection, progress, test isolation, WASM, admin build, admin scope drift, CLI executable, system-of-record, eval glossary, synthetic corpus privacy, and typecheck all passed. |
+| Charter v2 core guard | PASS | `git diff -- 'src/core/' 'src/mcp/' --stat` returned empty. |
+| CLI entry guard | PASS | `git diff -- src/commands/ --stat` returned empty. |
+| Admin/skills/deploy guard | PASS | `git diff -- admin/ skills/ deploy/ --stat` returned empty. |
+| Dependency guard | PASS | `package.json` changed only by adding `scripts.ebrain:e2e`; no dependency or devDependency entries changed. |
+| No full unit suite | PASS | Did not run `bun test test/` full suite per K2 instruction/OOM warning. |
+
+## Runtime Evidence Notes
+
+- The E2E test is designed to inspect real produced artifacts when run with Postgres: `executives`, `enterprise_apps`, `enterprise_oauth_tokens`, `enterprise_ingest_sources`, `enterprise_ingest_objects`, `pages`, `facts`, `enterprise_fact_conflicts`, `minion_jobs`, generated brief pages, mock `pushToUser` calls, webhook subagent job data, and `/admin/api/ebrain/stats` JSON.
+- Full runtime artifact evidence from the 9-step path is not available on this workstation because Docker is not running. The script and compose file are present and validated; a host with Docker daemon access should run `bun run ebrain:e2e` to produce the required Postgres-backed artifact evidence.
+- The test guards external network by allowing only localhost fetches. Fixture import uses local JSON files and `noEmbed: true`; brief generation uses the existing E2 stub; webhook subagent execution is captured through a mock `submitJob` and never calls a real LLM.
+- No schema migrations, dependencies, gbrain core, MCP, CLI command, admin, skills, deploy, or `src/ebrain/*` business-code changes were made.
+
+## Files Changed
+
+```text
+docker-compose.ebrain-test.yml
+package.json
+scripts/run-e2e-ebrain.sh
+tests/e2e/ebrain-full-flow.test.ts
+STAGE-SUMMARY.md
+```

@@ -48,6 +48,7 @@
     "check:newlines": "scripts/check-trailing-newline.sh",
     "test:e2e": "bash scripts/run-e2e.sh",
     "ebrain:smoke": "bash scripts/ebrain-smoke.sh",
+    "ebrain:e2e": "bash scripts/run-e2e-ebrain.sh",
     "test:slow": "bash scripts/run-slow-tests.sh",
     "test:profile": "bash scripts/profile-tests.sh",
     "test:serial": "bash scripts/run-serial-tests.sh",
