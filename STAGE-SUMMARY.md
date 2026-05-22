@@ -2362,3 +2362,25 @@ Fixwave R1 runtime evidence notes:
 
 - No live production/staging DingTalk or Feishu credentials were available in this fixwave. Runtime evidence is local PGLite plus mocked vendor token HTTP responses: the production code path still calls the real app token managers and only the test fetch layer is mocked.
 - The inspected artifacts were real `enterprise_oauth_tokens` rows written by the token managers, with encrypted token payloads decrypted in test to prove the refresh result was persisted.
+
+## Fixwave R2
+
+- Baseline: `640c9abb`; reviewer R2 blocker `H-002` fixed in this wave.
+- H-002: `/admin/api/ebrain/enterprise-apps` save now updates `app_type`, `enabled`, `bot_enabled`, and `push_enabled` in the `ON CONFLICT (app_id)` path, so a pre-save connection-test shell row cannot remain disabled after the user saves the wizard.
+- Added route-level regression coverage for the full sequence: connection test creates the hidden shell app, save upserts the same `app_id`, the HTTP server is stopped, and the produced PGLite `enterprise_apps` row is inspected directly.
+
+Fixwave R2 verification:
+
+| Check | Result | Evidence |
+|---|---|---|
+| Charter v2 core guard | PASS | `git diff 640c9abb -- 'src/core/' 'src/mcp/' --stat` returned empty |
+| serve-http deletion guard | PASS | `git diff 640c9abb -- src/commands/serve-http.ts \| grep -cE '^-[^-]'` -> 0 |
+| Core HTTP transport gate | PASS | `bun test test/http-transport.test.ts` -> 24 pass, 0 fail, 71 expect() calls |
+| H2 focused write tests | PASS | `bun test test/serve-http-ebrain-write.test.ts tests/ebrain/admin-write-paths.test.ts` -> 7 pass, 0 fail, 22 expect() calls; route regression verifies testConnection -> save -> `enterprise_apps.enabled=true`, `bot_enabled=true`, `push_enabled=true`, and `deleted_at IS NULL` |
+| Root typecheck | PASS | `bun run typecheck` -> `tsc --noEmit` exited 0 |
+| Full verify | PASS | `bun run verify` -> privacy, proposal PII, test names, JSONB, source-id projection, progress, test isolation, WASM, admin build, admin scope drift, CLI executable, system-of-record, eval glossary, synthetic corpus privacy, and typecheck all passed |
+
+Fixwave R2 runtime evidence notes:
+
+- No live production/staging DingTalk credentials were used in this fixwave. Runtime evidence is local PGLite plus a local HTTP token endpoint; the server route still exercises the production `testEnterpriseConnection` dispatcher and DingTalk token-manager refresh path.
+- The inspected end artifact was the real `enterprise_apps` row for `dingtalk-save-r2`, read from the same PGLite database after the HTTP save route completed, proving the runtime flags are enabled rather than inferred from mocks or types.

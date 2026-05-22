@@ -845,10 +845,14 @@ export async function runServeHttp(engine: BrainEngine, options: ServeHttpOption
         `INSERT INTO enterprise_apps (app_id, app_type, display_name, credentials, api_base_url, config, enabled, bot_enabled, push_enabled)
          VALUES ($1, $2, $3, $4::jsonb, $5, $6::jsonb, true, true, true)
          ON CONFLICT (app_id) DO UPDATE SET
+           app_type = EXCLUDED.app_type,
            display_name = EXCLUDED.display_name,
            credentials = EXCLUDED.credentials,
            api_base_url = EXCLUDED.api_base_url,
            config = EXCLUDED.config,
+           enabled = EXCLUDED.enabled,
+           bot_enabled = EXCLUDED.bot_enabled,
+           push_enabled = EXCLUDED.push_enabled,
            deleted_at = NULL,
            updated_at = now()`,
         [appId, normalizeEbrainAppType(appType), displayName, JSON.stringify(credentials), config.api_base_url ?? null, JSON.stringify(config)],
