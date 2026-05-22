@@ -1,0 +1,66 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "ebrain.componentName" (dict "root" . "component" "mcp-api") }}
+  labels:
+    {{- include "ebrain.componentLabels" (dict "root" . "component" "mcp-api") | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount.mcpApi }}
+  selector:
+    matchLabels:
+      {{- include "ebrain.selectorLabels" (dict "root" . "component" "mcp-api") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "ebrain.componentLabels" (dict "root" . "component" "mcp-api") | nindent 8 }}
+    spec:
+      serviceAccountName: {{ .Values.serviceAccount.name }}
+      {{- include "ebrain.imagePullSecrets" . | nindent 6 }}
+      {{- include "ebrain.podSecurityContext" . | nindent 6 }}
+      containers:
+        - name: mcp-api
+          image: {{ include "ebrain.image" . | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command:
+            - gbrain
+          args:
+            - serve
+            - --http
+            - --bind
+            - 0.0.0.0
+            - --port
+            - {{ .Values.ports.mcpApi | quote }}
+            - --public-url
+            - {{ .Values.config.publicUrl | quote }}
+            - --suppress-bootstrap-token
+          ports:
+            - name: http
+              containerPort: {{ .Values.ports.mcpApi }}
+              protocol: TCP
+          env:
+            - name: PORT
+              value: {{ .Values.ports.mcpApi | quote }}
+            {{- include "ebrain.runtimeEnv" . | nindent 12 }}
+          volumeMounts:
+            {{- include "ebrain.brainRepoMount" . | nindent 12 }}
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 20
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 60
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 3
+          resources:
+            {{- toYaml .Values.resources.mcpApi | nindent 12 }}
+          {{- include "ebrain.containerSecurityContext" . | nindent 10 }}
+      volumes:
+        {{- include "ebrain.brainRepoVolume" . | nindent 8 }}

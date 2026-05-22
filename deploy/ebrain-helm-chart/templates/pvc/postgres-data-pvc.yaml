@@ -1,0 +1,19 @@
+{{- if .Values.postgres.dataPvc.enabled }}
+# Optional PVC for customer-managed in-cluster Postgres stateful workloads.
+# The production chart does not install Postgres; RDS/PolarDB/Aurora remain primary.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "ebrain.componentName" (dict "root" . "component" "postgres-data") }}
+  labels:
+    {{- include "ebrain.componentLabels" (dict "root" . "component" "postgres-data") | nindent 4 }}
+spec:
+  accessModes:
+    - {{ .Values.postgres.dataPvc.accessMode }}
+  resources:
+    requests:
+      storage: {{ .Values.postgres.dataPvc.size }}
+  {{- if .Values.postgres.dataPvc.storageClass }}
+  storageClassName: {{ .Values.postgres.dataPvc.storageClass | quote }}
+  {{- end }}
+{{- end }}

@@ -2384,3 +2384,66 @@ Fixwave R2 runtime evidence notes:
 
 - No live production/staging DingTalk credentials were used in this fixwave. Runtime evidence is local PGLite plus a local HTTP token endpoint; the server route still exercises the production `testEnterpriseConnection` dispatcher and DingTalk token-manager refresh path.
 - The inspected end artifact was the real `enterprise_apps` row for `dingtalk-save-r2`, read from the same PGLite database after the HTTP save route completed, proving the runtime flags are enabled rather than inferred from mocks or types.
+
+# Stage J1: Production Helm Chart for Alibaba Cloud ACK and AWS EKS
+
+## Status
+
+- Stage: J1
+- Branch: `ebrain-mvp`
+- Baseline: `b839da76`
+- Scope: production Helm chart only under `deploy/ebrain-helm-chart/`; no gbrain core, admin, skills, schema, dependencies, or `deploy/dev/` changes.
+- Result: PASS for J1 chart-rendering scope. Dual-stack Helm dry-runs render valid Kubernetes manifests for Aliyun ACK and AWS EKS; no live cluster apply was performed in J1.
+
+## Implementation
+
+- Added `deploy/ebrain-helm-chart/Chart.yaml` with chart name `ebrain`, version `0.1.0`, and appVersion `0.36.3.0`.
+- Added production defaults plus cloud/customer overlays: `values.yaml`, `values.aliyun.yaml`, `values.aws.yaml`, and `values.example-customer.yaml`.
+- Added Helm helpers for release/component naming, labels/selectors, image construction, image pull secrets, runtime env, PVC mounts, and ingress backend service selection.
+- Added 5 Deployment templates: `mcp-api` (`gbrain serve --http`), `worker` (`gbrain jobs work`), `autopilot` (`gbrain autopilot`), `webhook-receiver` (`gbrain serve --http` routed only through `/webhook` ingress), and `admin-spa` (`nginx` serving the production admin SPA image).
+- Added 11 CronJob templates with per-job `enabled` values rendered as `spec.suspend`: enterprise cycle, executive brief fanout, token refresh, 5 connector sync submitters, upstream dream cycle, weekly audit review J2 stub, and backup J2 stub.
+- Added 3 ClusterIP services, one cloud-switched ingress, 1 SecretStore plus 5 ExternalSecret templates, and 2 PVC templates (`brain-repo` RWX NAS/EFS plus optional Postgres data PVC for customer-managed in-cluster stateful workloads).
+
+## Verification Evidence
+
+| Check | Result | Evidence |
+|---|---|---|
+| Helm lint | PASS | `helm lint deploy/ebrain-helm-chart` -> 1 chart linted, 0 failed; icon recommendation only |
+| Aliyun ACK dry-run | PASS | `helm install ebrain deploy/ebrain-helm-chart --dry-run=client -f deploy/ebrain-helm-chart/values.aliyun.yaml` rendered successfully |
+| AWS EKS dry-run | PASS | `helm install ebrain deploy/ebrain-helm-chart --dry-run=client -f deploy/ebrain-helm-chart/values.aws.yaml` rendered successfully |
+| Aliyun render inspection | PASS | `/tmp/ebrain-j1-aliyun.yaml` contains 5 Deployments, 11 CronJobs, 3 Services, 1 Ingress, 1 SecretStore, 5 ExternalSecrets, and 2 PVCs; storage classes `nas-cifs` and `alicloud-disk-essd`; ingress class `nginx`; ACR pull secret `acr-pull-secret`; image registry `registry.cn-hangzhou.aliyuncs.com/ebrain/...` |
+| AWS render inspection | PASS | `/tmp/ebrain-j1-aws.yaml` contains 5 Deployments, 11 CronJobs, 3 Services, 1 Ingress, 1 SecretStore, 5 ExternalSecrets, and 2 PVCs; storage classes `efs-sc` and `gp3`; ingress class `alb`; ECR pull secret `ecr-pull-secret`; image registry `<aws_account>.dkr.ecr.<region>.amazonaws.com/ebrain/...` |
+| File count checklist | PASS | `find deploy/ebrain-helm-chart/templates/deployments -type f` -> 5; `templates/cronjobs` -> 11; `templates/services` -> 3; `templates/secrets` -> 6; `templates/pvc` -> 2 |
+| Root typecheck | PASS | `bun run typecheck` -> `tsc --noEmit` exited 0 |
+| Full verify | PASS | `bun run verify` -> privacy, proposal PII, test names, JSONB, source-id projection, progress, isolation, WASM, admin build, admin scope drift, CLI executable, system-of-record, eval glossary, synthetic corpus privacy, and typecheck all passed |
+| No full unit suite | PASS | Did not run `bun test test/` full suite per J1 instruction/OOM warning |
+
+## Runtime Evidence Notes
+
+- J1 runtime evidence is the Helm renderer output, not a live ACK/EKS deployment: both cloud overlays were rendered through `helm install --dry-run=client`, and the produced manifests were inspected directly for kind counts, storage classes, ingress annotations/classes, pull secrets, image registries, and CLI command wiring.
+- No live cluster, RDS, NAS/EFS, ALB/SLB, KMS, Secrets Manager, or External Secrets controller was contacted in this stage. Applying the chart into real ACK/EKS and observing pods/ExternalSecrets/PVC binding belongs to the customer environment or a later deployment run.
+- The weekly audit review and backup CronJobs are J2 stubs by design. They render as suspended by default and carry `j2Stub` params; J2 owns the actual monitoring, audit alerting, and backup business logic.
+- Connector sync CronJobs submit named connector jobs through `gbrain jobs submit`; J1 does not add connector business logic or worker handlers.
+
+## Files Changed
+
+```text
+deploy/ebrain-helm-chart/Chart.yaml
+deploy/ebrain-helm-chart/values.yaml
+deploy/ebrain-helm-chart/values.aliyun.yaml
+deploy/ebrain-helm-chart/values.aws.yaml
+deploy/ebrain-helm-chart/values.example-customer.yaml
+deploy/ebrain-helm-chart/templates/_helpers.tpl
+deploy/ebrain-helm-chart/templates/deployments/*.yaml
+deploy/ebrain-helm-chart/templates/cronjobs/*.yaml
+deploy/ebrain-helm-chart/templates/services/*.yaml
+deploy/ebrain-helm-chart/templates/ingress/ingress.yaml
+deploy/ebrain-helm-chart/templates/secrets/*.yaml
+deploy/ebrain-helm-chart/templates/pvc/*.yaml
+STAGE-SUMMARY.md
+```
+
+## Charter v2 Scope Notes
+
+- `src/`, `admin/`, `skills/`, `deploy/dev/`, dependencies, Dockerfiles, and migrations were intentionally untouched.
+- The production chart is isolated under `deploy/ebrain-helm-chart/` and does not package Postgres or Redis; external RDS/PolarDB/Aurora and NAS/EFS are selected by values.

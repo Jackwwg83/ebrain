@@ -1,0 +1,53 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "ebrain.componentName" (dict "root" . "component" "admin-spa") }}
+  labels:
+    {{- include "ebrain.componentLabels" (dict "root" . "component" "admin-spa") | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount.adminSpa }}
+  selector:
+    matchLabels:
+      {{- include "ebrain.selectorLabels" (dict "root" . "component" "admin-spa") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "ebrain.componentLabels" (dict "root" . "component" "admin-spa") | nindent 8 }}
+    spec:
+      serviceAccountName: {{ .Values.serviceAccount.name }}
+      {{- include "ebrain.imagePullSecrets" . | nindent 6 }}
+      {{- include "ebrain.podSecurityContext" . | nindent 6 }}
+      containers:
+        - name: admin-spa
+          image: {{ include "ebrain.adminSpaImage" . | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command:
+            {{- toYaml .Values.adminSpa.command | nindent 12 }}
+          args:
+            {{- toYaml .Values.adminSpa.args | nindent 12 }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.ports.adminSpa }}
+              protocol: TCP
+          env:
+            - name: NGINX_PORT
+              value: {{ .Values.ports.adminSpa | quote }}
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 20
+            timeoutSeconds: 3
+            failureThreshold: 3
+          resources:
+            {{- toYaml .Values.resources.adminSpa | nindent 12 }}
+          {{- include "ebrain.containerSecurityContext" . | nindent 10 }}

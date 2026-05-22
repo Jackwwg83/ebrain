@@ -1,0 +1,37 @@
+---
+image:
+  registry: <aws_account>.dkr.ecr.<region>.amazonaws.com/ebrain
+  pullSecret: ecr-pull-secret
+
+ingress:
+  className: alb
+  annotations:
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTPS":443}]'
+    alb.ingress.kubernetes.io/certificate-arn: <acm-cert-arn>
+
+storage:
+  brainRepo:
+    storageClass: efs-sc
+
+postgres:
+  dataPvc:
+    storageClass: gp3
+
+externalSecrets:
+  secretStore: aws-secretsmanager
+  provider: aws
+  aws:
+    region: ap-northeast-1
+    service: SecretsManager
+    serviceAccountRef:
+      name: default
+  remoteKeys:
+    ebrainMasterKey: ebrain/prod/runtime/ebrain-master-key
+    ebrainSecretsKey: ebrain/prod/runtime/ebrain-master-key
+    databaseUrl: ebrain/prod/postgres/database-url
+    postgresHost: ebrain/prod/postgres/host
+    postgresPassword: ebrain/prod/postgres/password
+    anthropicApiKey: ebrain/prod/providers/anthropic-api-key
+    enterpriseAppCredentials: ebrain/prod/enterprise-apps/credentials
+    imagePullDockerConfigJson: ebrain/prod/ecr/dockerconfigjson

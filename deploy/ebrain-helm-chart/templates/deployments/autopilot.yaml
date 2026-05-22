@@ -1,0 +1,43 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "ebrain.componentName" (dict "root" . "component" "autopilot") }}
+  labels:
+    {{- include "ebrain.componentLabels" (dict "root" . "component" "autopilot") | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount.autopilot }}
+  selector:
+    matchLabels:
+      {{- include "ebrain.selectorLabels" (dict "root" . "component" "autopilot") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "ebrain.componentLabels" (dict "root" . "component" "autopilot") | nindent 8 }}
+    spec:
+      serviceAccountName: {{ .Values.serviceAccount.name }}
+      {{- include "ebrain.imagePullSecrets" . | nindent 6 }}
+      {{- include "ebrain.podSecurityContext" . | nindent 6 }}
+      containers:
+        - name: autopilot
+          image: {{ include "ebrain.image" . | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command:
+            - gbrain
+          args:
+            - autopilot
+            - --repo
+            - {{ .Values.storage.brainRepo.mountPath | quote }}
+            - --interval
+            - {{ .Values.autopilot.intervalSeconds | quote }}
+            {{- if .Values.autopilot.noWorker }}
+            - --no-worker
+            {{- end }}
+          env:
+            {{- include "ebrain.runtimeEnv" . | nindent 12 }}
+          volumeMounts:
+            {{- include "ebrain.brainRepoMount" . | nindent 12 }}
+          resources:
+            {{- toYaml .Values.resources.autopilot | nindent 12 }}
+          {{- include "ebrain.containerSecurityContext" . | nindent 10 }}
+      volumes:
+        {{- include "ebrain.brainRepoVolume" . | nindent 8 }}

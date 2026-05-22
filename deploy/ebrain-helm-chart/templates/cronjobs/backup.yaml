@@ -1,0 +1,58 @@
+{{- $job := .Values.cronjobs.backup -}}
+# J2 stub: backup business logic is implemented in Stage J2.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "ebrain.componentName" (dict "root" . "component" "backup") }}
+  labels:
+    {{- include "ebrain.componentLabels" (dict "root" . "component" "backup") | nindent 4 }}
+  annotations:
+    ebrain.garrytan.com/job-name: {{ $job.jobName | quote }}
+spec:
+  schedule: {{ $job.schedule | quote }}
+  {{- if $job.timeZone }}
+  timeZone: {{ $job.timeZone | quote }}
+  {{- end }}
+  suspend: {{ not $job.enabled }}
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      template:
+        metadata:
+          labels:
+            {{- include "ebrain.componentLabels" (dict "root" . "component" "backup") | nindent 12 }}
+        spec:
+          serviceAccountName: {{ .Values.serviceAccount.name }}
+          {{- include "ebrain.imagePullSecrets" . | nindent 10 }}
+          restartPolicy: OnFailure
+          {{- include "ebrain.podSecurityContext" . | nindent 10 }}
+          containers:
+            - name: submit
+              image: {{ include "ebrain.image" . | quote }}
+              imagePullPolicy: {{ .Values.image.pullPolicy }}
+              command:
+                - gbrain
+              args:
+                - jobs
+                - submit
+                - {{ $job.jobName | quote }}
+                - --queue
+                - {{ $job.queue | quote }}
+                - --params
+                - {{ $job.params | toJson | quote }}
+                - --priority
+                - {{ $job.priority | quote }}
+                - --max-attempts
+                - {{ $job.maxAttempts | quote }}
+              env:
+                {{- include "ebrain.runtimeEnv" . | nindent 16 }}
+              volumeMounts:
+                {{- include "ebrain.brainRepoMount" . | nindent 16 }}
+              resources:
+                {{- toYaml .Values.resources.cronjobs | nindent 16 }}
+              {{- include "ebrain.containerSecurityContext" . | nindent 14 }}
+          volumes:
+            {{- include "ebrain.brainRepoVolume" . | nindent 12 }}

@@ -1,0 +1,317 @@
+---
+nameOverride: ""
+fullnameOverride: ""
+
+image:
+  registry: ""
+  name: ebrain
+  tag: "latest"
+  pullPolicy: IfNotPresent
+  pullSecret: ""
+
+replicaCount:
+  mcpApi: 2
+  worker: 2
+  autopilot: 1
+  webhookReceiver: 2
+  adminSpa: 2
+
+serviceAccount:
+  name: default
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  runAsGroup: 1000
+  fsGroup: 1000
+
+containerSecurityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: false
+  capabilities:
+    drop:
+      - ALL
+
+ports:
+  mcpApi: 3131
+  webhookReceiver: 3132
+  adminSpa: 8080
+
+services:
+  mcpApi:
+    port: 80
+  webhookReceiver:
+    port: 80
+  adminSpa:
+    port: 80
+
+resources:
+  mcpApi:
+    requests:
+      cpu: 500m
+      memory: 1Gi
+    limits:
+      cpu: 1000m
+      memory: 2Gi
+  worker:
+    requests:
+      cpu: 500m
+      memory: 1Gi
+    limits:
+      cpu: 2000m
+      memory: 4Gi
+  autopilot:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+  webhookReceiver:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+  adminSpa:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  cronjobs:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+
+postgres:
+  host: ""
+  port: 5432
+  database: ebrain
+  poolSize: 10
+  dataPvc:
+    enabled: true
+    storageClass: ""
+    size: 20Gi
+    accessMode: ReadWriteOnce
+
+storage:
+  brainRepo:
+    storageClass: ""
+    size: 50Gi
+    accessMode: ReadWriteMany
+    mountPath: /data/ebrain
+
+ingress:
+  enabled: true
+  className: ""
+  annotations: {}
+  tls:
+    enabled: true
+    secretName: ebrain-tls
+  hosts:
+    - host: ebrain.example.com
+      paths:
+        - path: /mcp
+          backend: mcp-api
+        - path: /admin
+          backend: admin-spa
+        - path: /webhook
+          backend: webhook-receiver
+
+externalSecrets:
+  enabled: true
+  secretStore: ebrain-secretstore
+  refreshInterval: 1h
+  provider: alibaba
+  alibaba:
+    regionID: cn-hangzhou
+    authSecretName: alicloud-kms-access
+    accessKeyIdKey: access-key-id
+    accessKeySecretKey: access-key-secret
+  aws:
+    region: ap-northeast-1
+    service: SecretsManager
+    serviceAccountRef:
+      name: default
+  remoteKeys:
+    ebrainMasterKey: ebrain/prod/runtime/ebrain-master-key
+    ebrainSecretsKey: ebrain/prod/runtime/ebrain-master-key
+    databaseUrl: ebrain/prod/postgres/database-url
+    postgresHost: ebrain/prod/postgres/host
+    postgresPassword: ebrain/prod/postgres/password
+    anthropicApiKey: ebrain/prod/providers/anthropic-api-key
+    enterpriseAppCredentials: ebrain/prod/enterprise-apps/credentials
+    imagePullDockerConfigJson: ebrain/prod/registry/dockerconfigjson
+  imagePullSecret:
+    enabled: true
+
+secrets:
+  masterKey:
+    name: ebrain-master-key
+    ebrainMasterKey: EBRAIN_MASTER_KEY
+    ebrainSecretsKey: EBRAIN_SECRETS_KEY
+  postgres:
+    name: ebrain-postgres-credentials
+    databaseUrlKey: DATABASE_URL
+    hostKey: POSTGRES_HOST
+    passwordKey: POSTGRES_PASSWORD
+  llm:
+    name: ebrain-llm-credentials
+    anthropicApiKey: ANTHROPIC_API_KEY
+  enterpriseApps:
+    name: ebrain-enterprise-app-credentials
+
+config:
+  ebrainEnv: production
+  nodeEnv: production
+  logLevel: info
+  gbrainHome: /data/ebrain
+  sourceId: enterprise
+  publicUrl: https://ebrain.example.com
+
+# These direct env overrides are intentionally blank in production defaults.
+# When blank, templates read values from ExternalSecret-backed Kubernetes Secrets.
+env:
+  DATABASE_URL: ""
+  ANTHROPIC_API_KEY: ""
+  EBRAIN_MASTER_KEY: ""
+  EBRAIN_SECRETS_KEY: ""
+
+worker:
+  queue: default
+  concurrency: 8
+  maxRssMb: 2048
+
+autopilot:
+  intervalSeconds: 300
+  noWorker: true
+
+webhookReceiver:
+  # Current gbrain serve --http registers /webhook endpoints; ingress only routes /webhook here.
+  publicUrl: https://ebrain.example.com
+
+adminSpa:
+  image:
+    name: ebrain-admin-spa
+  command:
+    - nginx
+  args:
+    - -g
+    - daemon off;
+
+cronjobs:
+  enterpriseCycle:
+    enabled: true
+    schedule: "0 3 * * *"
+    timeZone: Etc/UTC
+    jobName: ebrain-enterprise-cycle
+    queue: default
+    params:
+      sourceId: enterprise
+    priority: 10
+    maxAttempts: 3
+  executiveBrief:
+    enabled: true
+    schedule: "0 8 * * *"
+    timeZone: Etc/UTC
+    jobName: ebrain-executive-brief-fanout
+    queue: default
+    params:
+      dateMode: today
+    priority: 10
+    maxAttempts: 3
+  tokenRefresh:
+    enabled: true
+    schedule: "0 * * * *"
+    timeZone: Etc/UTC
+    jobName: ebrain-token-refresh
+    queue: default
+    params: {}
+    priority: 20
+    maxAttempts: 3
+  syncFeishu:
+    enabled: true
+    schedule: "*/10 * * * *"
+    timeZone: Etc/UTC
+    jobName: ebrain-sync-feishu
+    queue: default
+    params:
+      appType: feishu
+    priority: 0
+    maxAttempts: 3
+  syncDingtalk:
+    enabled: true
+    schedule: "*/10 * * * *"
+    timeZone: Etc/UTC
+    jobName: ebrain-sync-dingtalk
+    queue: default
+    params:
+      appType: dingtalk
+    priority: 0
+    maxAttempts: 3
+  syncWecom:
+    enabled: true
+    schedule: "*/10 * * * *"
+    timeZone: Etc/UTC
+    jobName: ebrain-sync-wecom
+    queue: default
+    params:
+      appType: wecom
+    priority: 0
+    maxAttempts: 3
+  syncSalesforce:
+    enabled: true
+    schedule: "*/15 * * * *"
+    timeZone: Etc/UTC
+    jobName: ebrain-sync-salesforce
+    queue: default
+    params:
+      appType: salesforce
+    priority: 0
+    maxAttempts: 3
+  syncTencentMeeting:
+    enabled: true
+    schedule: "*/15 * * * *"
+    timeZone: Etc/UTC
+    jobName: ebrain-sync-tencent-meeting
+    queue: default
+    params:
+      appType: tencent-meeting
+    priority: 0
+    maxAttempts: 3
+  dreamCycle:
+    enabled: false
+    schedule: "30 2 * * *"
+    timeZone: Etc/UTC
+    jobName: autopilot-cycle
+    queue: default
+    params:
+      sourceId: default
+    priority: 0
+    maxAttempts: 3
+  weeklyAuditReview:
+    enabled: false
+    schedule: "0 9 * * MON"
+    timeZone: Etc/UTC
+    jobName: ebrain-weekly-audit-review
+    queue: default
+    params:
+      j2Stub: true
+    priority: 0
+    maxAttempts: 1
+  backup:
+    enabled: false
+    schedule: "0 1 * * *"
+    timeZone: Etc/UTC
+    jobName: ebrain-backup
+    queue: default
+    params:
+      j2Stub: true
+    priority: 0
+    maxAttempts: 1

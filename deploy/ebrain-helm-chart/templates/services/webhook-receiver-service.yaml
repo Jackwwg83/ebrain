@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "ebrain.componentName" (dict "root" . "component" "webhook-receiver") }}
+  labels:
+    {{- include "ebrain.componentLabels" (dict "root" . "component" "webhook-receiver") | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "ebrain.selectorLabels" (dict "root" . "component" "webhook-receiver") | nindent 4 }}
+  ports:
+    - name: http
+      port: {{ .Values.services.webhookReceiver.port }}
+      targetPort: http
+      protocol: TCP

@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "ebrain.componentName" (dict "root" . "component" "mcp-api") }}
+  labels:
+    {{- include "ebrain.componentLabels" (dict "root" . "component" "mcp-api") | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "ebrain.selectorLabels" (dict "root" . "component" "mcp-api") | nindent 4 }}
+  ports:
+    - name: http
+      port: {{ .Values.services.mcpApi.port }}
+      targetPort: http
+      protocol: TCP

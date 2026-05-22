@@ -1,0 +1,45 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "ebrain.componentName" (dict "root" . "component" "worker") }}
+  labels:
+    {{- include "ebrain.componentLabels" (dict "root" . "component" "worker") | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount.worker }}
+  selector:
+    matchLabels:
+      {{- include "ebrain.selectorLabels" (dict "root" . "component" "worker") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "ebrain.componentLabels" (dict "root" . "component" "worker") | nindent 8 }}
+    spec:
+      serviceAccountName: {{ .Values.serviceAccount.name }}
+      {{- include "ebrain.imagePullSecrets" . | nindent 6 }}
+      {{- include "ebrain.podSecurityContext" . | nindent 6 }}
+      containers:
+        - name: worker
+          image: {{ include "ebrain.image" . | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command:
+            - gbrain
+          args:
+            - jobs
+            - work
+            - --queue
+            - {{ .Values.worker.queue | quote }}
+            - --concurrency
+            - {{ .Values.worker.concurrency | quote }}
+            - --max-rss
+            - {{ .Values.worker.maxRssMb | quote }}
+          env:
+            - name: GBRAIN_WORKER_CONCURRENCY
+              value: {{ .Values.worker.concurrency | quote }}
+            {{- include "ebrain.runtimeEnv" . | nindent 12 }}
+          volumeMounts:
+            {{- include "ebrain.brainRepoMount" . | nindent 12 }}
+          resources:
+            {{- toYaml .Values.resources.worker | nindent 12 }}
+          {{- include "ebrain.containerSecurityContext" . | nindent 10 }}
+      volumes:
+        {{- include "ebrain.brainRepoVolume" . | nindent 8 }}

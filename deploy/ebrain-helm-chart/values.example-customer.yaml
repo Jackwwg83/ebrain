@@ -1,0 +1,73 @@
+---
+fullnameOverride: ebrain-prod
+
+image:
+  registry: registry.cn-hangzhou.aliyuncs.com/customer-example/ebrain
+  name: ebrain
+  tag: "2026.05.22"
+  pullSecret: acr-pull-secret
+
+adminSpa:
+  image:
+    name: ebrain-admin-spa
+
+replicaCount:
+  mcpApi: 3
+  worker: 4
+  autopilot: 1
+  webhookReceiver: 3
+  adminSpa: 2
+
+config:
+  publicUrl: https://ebrain.customer-example.com
+
+ingress:
+  className: nginx
+  tls:
+    enabled: true
+    secretName: ebrain-prod-tls
+  hosts:
+    - host: ebrain.customer-example.com
+      paths:
+        - path: /mcp
+          backend: mcp-api
+        - path: /admin
+          backend: admin-spa
+        - path: /webhook
+          backend: webhook-receiver
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-body-size: 10m
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    cert-manager.io/cluster-issuer: customer-example-dns01
+
+storage:
+  brainRepo:
+    storageClass: nas-cifs
+    size: 200Gi
+
+postgres:
+  host: customer-example-rds.pg.rds.aliyuncs.com
+  poolSize: 20
+
+externalSecrets:
+  secretStore: kms-secretstore
+  provider: alibaba
+  alibaba:
+    regionID: cn-hangzhou
+  remoteKeys:
+    ebrainMasterKey: customer-example/prod/runtime/ebrain-master-key
+    ebrainSecretsKey: customer-example/prod/runtime/ebrain-master-key
+    databaseUrl: customer-example/prod/postgres/database-url
+    postgresHost: customer-example/prod/postgres/host
+    postgresPassword: customer-example/prod/postgres/password
+    anthropicApiKey: customer-example/prod/providers/anthropic-api-key
+    enterpriseAppCredentials: customer-example/prod/enterprise-apps/credentials
+    imagePullDockerConfigJson: customer-example/prod/acr/dockerconfigjson
+
+cronjobs:
+  dreamCycle:
+    enabled: false
+  weeklyAuditReview:
+    enabled: false
+  backup:
+    enabled: false

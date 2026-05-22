@@ -1,0 +1,69 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "ebrain.componentName" (dict "root" . "component" "webhook-receiver") }}
+  labels:
+    {{- include "ebrain.componentLabels" (dict "root" . "component" "webhook-receiver") | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount.webhookReceiver }}
+  selector:
+    matchLabels:
+      {{- include "ebrain.selectorLabels" (dict "root" . "component" "webhook-receiver") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "ebrain.componentLabels" (dict "root" . "component" "webhook-receiver") | nindent 8 }}
+    spec:
+      serviceAccountName: {{ .Values.serviceAccount.name }}
+      {{- include "ebrain.imagePullSecrets" . | nindent 6 }}
+      {{- include "ebrain.podSecurityContext" . | nindent 6 }}
+      containers:
+        - name: webhook-receiver
+          image: {{ include "ebrain.image" . | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          # gbrain serve --http currently owns Feishu/DingTalk/WeCom webhook endpoints.
+          command:
+            - gbrain
+          args:
+            - serve
+            - --http
+            - --bind
+            - 0.0.0.0
+            - --port
+            - {{ .Values.ports.webhookReceiver | quote }}
+            - --public-url
+            - {{ .Values.webhookReceiver.publicUrl | quote }}
+            - --suppress-bootstrap-token
+          ports:
+            - name: http
+              containerPort: {{ .Values.ports.webhookReceiver }}
+              protocol: TCP
+          env:
+            - name: PORT
+              value: {{ .Values.ports.webhookReceiver | quote }}
+            - name: EBRAIN_WORKLOAD_ROLE
+              value: webhook-receiver
+            {{- include "ebrain.runtimeEnv" . | nindent 12 }}
+          volumeMounts:
+            {{- include "ebrain.brainRepoMount" . | nindent 12 }}
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 20
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 60
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 3
+          resources:
+            {{- toYaml .Values.resources.webhookReceiver | nindent 12 }}
+          {{- include "ebrain.containerSecurityContext" . | nindent 10 }}
+      volumes:
+        {{- include "ebrain.brainRepoVolume" . | nindent 8 }}

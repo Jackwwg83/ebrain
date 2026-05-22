@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "ebrain.componentName" (dict "root" . "component" "brain-repo") }}
+  labels:
+    {{- include "ebrain.componentLabels" (dict "root" . "component" "brain-repo") | nindent 4 }}
+spec:
+  accessModes:
+    - {{ .Values.storage.brainRepo.accessMode }}
+  resources:
+    requests:
+      storage: {{ .Values.storage.brainRepo.size }}
+  {{- if .Values.storage.brainRepo.storageClass }}
+  storageClassName: {{ .Values.storage.brainRepo.storageClass | quote }}
+  {{- end }}
