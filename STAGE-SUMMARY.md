@@ -2447,3 +2447,79 @@ STAGE-SUMMARY.md
 
 - `src/`, `admin/`, `skills/`, `deploy/dev/`, dependencies, Dockerfiles, and migrations were intentionally untouched.
 - The production chart is isolated under `deploy/ebrain-helm-chart/` and does not package Postgres or Redis; external RDS/PolarDB/Aurora and NAS/EFS are selected by values.
+
+# Stage J2: Monitoring + Backup + Audit Alerting + J1 Follow-ups
+
+## Status
+
+- Stage: J2
+- Branch: `ebrain-mvp`
+- Baseline: `e0bf5334`
+- Scope: Ebrain observability, Grafana dashboards, backup/restore/export scripts, weekly audit review, circuit-breaker reset job, and J1 known-issue cleanup.
+- Result: Implementation complete with local PGLite job evidence, Helm render/dry-run evidence, dashboard/script validation, core HTTP gate, typecheck, and full verify passing. Backup/restore scripts were not executed against a live Postgres instance in this workstation because `pg_dump`, `pg_restore`, and `psql` are not installed and Docker daemon is unavailable.
+
+## Implementation
+
+- Added `src/ebrain/observability/init.ts` with env-gated OpenTelemetry NodeSDK startup and wired it from `src/cli.ts`. It auto-enables in production unless disabled, supports explicit `EBRAIN_OTEL_ENABLED=1`, configures OTLP trace/metric HTTP exporters, and registers Node auto-instrumentations including HTTP/Express coverage.
+- Added `src/ebrain/observability/metrics.ts` with custom Ebrain metric registration and record helpers for brief pushes, detected/open conflicts, cycle duration, connector sync lag/circuit state, LLM tokens, and estimated cost.
+- Added three Grafana dashboard JSON files under `deploy/grafana-dashboards/`: overview P0 request/error/latency/brief/conflict/cycle panels, ingestion connector lag/circuit panels, and LLM token/cost panels.
+- Added real shell scripts: `scripts/ebrain-backup.sh` (`pg_dump`, optional RDS/PITR hooks, git mirror, working-tree tar, LFS object tar, S3/OSS/rclone/local upload), `scripts/ebrain-restore.sh` (download archive, `pg_restore`, restore git mirror/working tree/LFS to staging), and `scripts/ebrain-export.sh` (R-13 customer exit export of enterprise CSVs plus brief markdown tarball).
+- Added `src/ebrain/jobs/weekly-audit-review.ts` to scan 7 days of `mcp_request_log`, connector lag over 24h, and open fact conflicts, render a markdown report, and push it to the ops channel through `notifyOpsChannel` and `BotAdapter` channel/group push.
+- Added `src/ebrain/jobs/circuit-breaker-reset.ts` plus `src/ebrain/sources/circuit-breaker.ts:resetExpired()` to reset only expired `enterprise_ingest_sources.circuit_open_until` rows without faking `last_success_at`.
+- Extended `src/commands/jobs.ts` append-only with lazy handlers for `ebrain-weekly-audit-review` and `ebrain-circuit-breaker-reset`.
+- Upgraded Helm cronjobs: weekly audit now submits the real job, backup now runs `scripts/ebrain-backup.sh`, token refresh schedule is `*/30 * * * *`, and a new hourly circuit-breaker reset CronJob submits the minion job.
+- Added OpenTelemetry dependencies in `package.json`/`bun.lock`: SDK node, auto-instrumentations, OTLP HTTP exporters, API, resources, SDK metrics, and semantic conventions.
+
+## Verification Evidence
+
+| Check | Result | Evidence |
+|---|---|---|
+| J2 focused tests | PASS | `bun test tests/ebrain/jobs/weekly-audit-review.test.ts tests/ebrain/jobs/circuit-breaker-reset.test.ts tests/ebrain/observability/metrics.test.ts` -> 5 pass, 0 fail, 24 expect() calls. The weekly audit test inserted real PGLite rows into `mcp_request_log`, `enterprise_ingest_sources`, and `enterprise_fact_conflicts`, inspected the markdown/report, and verified one ops-channel push payload. The reset test inspected produced DB rows after reset. |
+| Grafana JSON validity | PASS | `python3 -m json.tool deploy/grafana-dashboards/ebrain-overview.json`, `ebrain-ingestion.json`, and `ebrain-cost.json` all exited 0. |
+| Backup/restore/export shell syntax | PASS | `bash -n scripts/ebrain-backup.sh && bash -n scripts/ebrain-restore.sh && bash -n scripts/ebrain-export.sh` exited 0. |
+| Helm lint | PASS | `helm lint deploy/ebrain-helm-chart` -> 1 chart linted, 0 failed; icon recommendation only. |
+| Aliyun Helm dry-run | PASS | `helm template ebrain deploy/ebrain-helm-chart/ -f deploy/ebrain-helm-chart/values.aliyun.yaml` and `helm install ... --dry-run=client -f values.aliyun.yaml` exited 0. Rendered manifest has 12 CronJobs; token refresh schedule `*/30 * * * *`; circuit reset schedule `0 * * * *`; weekly audit schedule `0 9 * * MON`; backup command `/usr/bin/env bash scripts/ebrain-backup.sh`. |
+| AWS Helm dry-run | PASS | `helm template ebrain deploy/ebrain-helm-chart/ -f deploy/ebrain-helm-chart/values.aws.yaml` and `helm install ... --dry-run=client -f values.aws.yaml` exited 0. |
+| Core HTTP transport gate | PASS | `bun test test/http-transport.test.ts` -> 24 pass, 0 fail, 71 expect() calls. |
+| Root typecheck | PASS | `bun run typecheck` -> `tsc --noEmit` exited 0. |
+| Full verify | PASS | `bun run verify` -> privacy, proposal PII, test names, JSONB, source-id projection, progress, test isolation, WASM, admin build, admin scope drift, CLI executable, system-of-record, eval glossary, synthetic corpus privacy, and typecheck all passed. |
+| Charter v2 core guard | PASS | `git diff e0bf5334..HEAD -- 'src/core/' 'src/mcp/' --stat` returned empty. |
+| jobs.ts append-only guard | PASS | `git diff e0bf5334..HEAD -- src/commands/jobs.ts | grep -cE '^-[^-]'` -> 0. |
+| J1-M-001 cleanup | PASS | `deploy/ebrain-helm-chart/values.yaml` has `cronjobs.tokenRefresh.schedule: "*/30 * * * *"`. |
+| J1-L-001 cleanup | PASS | `deploy/ebrain-helm-chart/templates/cronjobs/circuit-breaker-reset.yaml` renders and submits job name `ebrain-circuit-breaker-reset`. |
+
+## Runtime Evidence Notes
+
+- Weekly audit runtime evidence is local PGLite plus mocked ops BotAdapter transport: the job read real produced DB rows from all three required tables, generated a markdown payload, and the test inspected the exact content sent to channel `ops`.
+- Circuit-breaker reset runtime evidence is local PGLite: the expired source row was reset to `consecutive_errors=0` and `circuit_open_until=NULL`, while the future-open source stayed open.
+- Helm runtime evidence is renderer output and dry-run manifests for both cloud overlays, not a live ACK/EKS apply.
+- Backup/restore/export script runtime against real Postgres was blocked locally: `pg_dump`, `pg_restore`, and `psql` are absent, and Docker is installed but the daemon socket is unavailable. The scripts are functional shell implementations and Helm wires backup to the script, but live backup/restore drill evidence still requires an environment with Postgres client tools and a staging database.
+- OpenTelemetry startup is env-gated. It will auto-start in production or when `EBRAIN_OTEL_ENABLED=1`, and can be disabled with `EBRAIN_OTEL_DISABLED=1` or `OTEL_SDK_DISABLED=1`; no telemetry is forced in local dev.
+
+## Files Changed
+
+```text
+package.json
+bun.lock
+src/cli.ts
+src/commands/jobs.ts
+src/ebrain/sources/circuit-breaker.ts
+src/ebrain/observability/init.ts
+src/ebrain/observability/metrics.ts
+src/ebrain/jobs/weekly-audit-review.ts
+src/ebrain/jobs/circuit-breaker-reset.ts
+deploy/grafana-dashboards/ebrain-overview.json
+deploy/grafana-dashboards/ebrain-ingestion.json
+deploy/grafana-dashboards/ebrain-cost.json
+scripts/ebrain-backup.sh
+scripts/ebrain-restore.sh
+scripts/ebrain-export.sh
+deploy/ebrain-helm-chart/values.yaml
+deploy/ebrain-helm-chart/templates/cronjobs/backup.yaml
+deploy/ebrain-helm-chart/templates/cronjobs/weekly-audit-review.yaml
+deploy/ebrain-helm-chart/templates/cronjobs/circuit-breaker-reset.yaml
+tests/ebrain/jobs/weekly-audit-review.test.ts
+tests/ebrain/jobs/circuit-breaker-reset.test.ts
+tests/ebrain/observability/metrics.test.ts
+STAGE-SUMMARY.md
+```

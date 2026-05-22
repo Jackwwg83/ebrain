@@ -228,7 +228,7 @@ cronjobs:
     maxAttempts: 3
   tokenRefresh:
     enabled: true
-    schedule: "0 * * * *"
+    schedule: "*/30 * * * *"
     timeZone: Etc/UTC
     jobName: ebrain-token-refresh
     queue: default
@@ -301,17 +301,29 @@ cronjobs:
     timeZone: Etc/UTC
     jobName: ebrain-weekly-audit-review
     queue: default
-    params:
-      j2Stub: true
+    params: {}
     priority: 0
     maxAttempts: 1
+  circuitBreakerReset:
+    enabled: true
+    schedule: "0 * * * *"
+    timeZone: Etc/UTC
+    jobName: ebrain-circuit-breaker-reset
+    queue: default
+    params: {}
+    priority: 0
+    maxAttempts: 3
   backup:
     enabled: false
     schedule: "0 1 * * *"
     timeZone: Etc/UTC
     jobName: ebrain-backup
     queue: default
-    params:
-      j2Stub: true
+    params: {}
     priority: 0
     maxAttempts: 1
+
+backup:
+  destination: ""
+  retentionDays: 30
+  localOnly: false

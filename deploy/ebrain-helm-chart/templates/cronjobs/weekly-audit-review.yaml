@@ -1,5 +1,5 @@
 {{- $job := .Values.cronjobs.weeklyAuditReview -}}
-# J2 stub: business logic is implemented in Stage J2.
+# Submits the J2 weekly audit review job.
 apiVersion: batch/v1
 kind: CronJob
 metadata:

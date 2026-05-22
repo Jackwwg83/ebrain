@@ -1,0 +1,167 @@
+{
+  "annotations": {
+    "list": []
+  },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "id": null,
+  "links": [],
+  "liveNow": false,
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Connector Sync Lag",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 0
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "max(ebrain_connector_sync_lag_seconds) by (ingest_source_id,ingest_source_type)",
+          "legendFormat": "{{operation}}{{ingest_source_type}}{{provider}}{{model}}{{severity}}{{phase}}"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "Circuit Breaker State",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 0
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "max(ebrain_connector_circuit_open) by (ingest_source_id,ingest_source_type)",
+          "legendFormat": "{{operation}}{{ingest_source_type}}{{provider}}{{model}}{{severity}}{{phase}}"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "Connector Request Errors",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate(http_client_request_duration_seconds_count{service_name=~\"$service\",http_response_status_code=~\"5..\"}[5m])) by (server_address)",
+          "legendFormat": "{{operation}}{{ingest_source_type}}{{provider}}{{model}}{{severity}}{{phase}}"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "Connector Latency p95",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.95, sum(rate(http_client_request_duration_seconds_bucket{service_name=~\"$service\"}[5m])) by (le,server_address))",
+          "legendFormat": "{{operation}}{{ingest_source_type}}{{provider}}{{model}}{{severity}}{{phase}}"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "bargauge",
+      "title": "Open Conflicts by Severity",
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 16
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(ebrain_conflict_open_total) by (severity)",
+          "legendFormat": "{{operation}}{{ingest_source_type}}{{provider}}{{model}}{{severity}}{{phase}}"
+        }
+      ]
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 39,
+  "tags": [
+    "ebrain",
+    "ingestion"
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "service",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${DS_PROMETHEUS}"
+        },
+        "query": "label_values(up, service_name)",
+        "current": {
+          "text": "ebrain",
+          "value": "ebrain"
+        },
+        "hide": 0,
+        "includeAll": false,
+        "refresh": 1
+      }
+    ]
+  },
+  "time": {
+    "from": "now-24h",
+    "to": "now"
+  },
+  "timezone": "browser",
+  "title": "Ebrain Ingestion",
+  "uid": "ebrain-ingestion",
+  "version": 1
+}

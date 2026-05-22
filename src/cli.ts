@@ -44,7 +44,25 @@ const CLI_ONLY_SELF_HELP = new Set([
 ]);
 CLI_ONLY_SELF_HELP.add('ebrain');
 
+function envFlag(value: string | undefined): boolean {
+  return value === '1' || value === 'true' || value === 'yes' || value === 'on';
+}
+
+async function maybeInitEbrainObservability(): Promise<void> {
+  const disabled = envFlag(process.env.EBRAIN_OTEL_DISABLED) || envFlag(process.env.OTEL_SDK_DISABLED);
+  const enabled = !disabled && (
+    envFlag(process.env.EBRAIN_OTEL_ENABLED)
+    || process.env.NODE_ENV === 'production'
+    || process.env.EBRAIN_ENV === 'production'
+  );
+  if (!enabled) return;
+  const { initEbrainObservability } = await import('./ebrain/observability/init.ts');
+  initEbrainObservability();
+}
+
 async function main() {
+  await maybeInitEbrainObservability();
+
   // Parse global flags (--quiet / --progress-json / --progress-interval)
   // BEFORE command dispatch, so `gbrain --progress-json doctor` works.
   // The stripped argv is what the command sees.

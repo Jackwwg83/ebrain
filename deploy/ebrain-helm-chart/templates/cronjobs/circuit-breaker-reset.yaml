@@ -1,11 +1,11 @@
-{{- $job := .Values.cronjobs.backup -}}
-# Runs the J2 Postgres + brain repo backup script.
+{{- $job := .Values.cronjobs.circuitBreakerReset -}}
+# Submits the J2 expired circuit-breaker reset job.
 apiVersion: batch/v1
 kind: CronJob
 metadata:
-  name: {{ include "ebrain.componentName" (dict "root" . "component" "backup") }}
+  name: {{ include "ebrain.componentName" (dict "root" . "component" "circuit-breaker-reset") }}
   labels:
-    {{- include "ebrain.componentLabels" (dict "root" . "component" "backup") | nindent 4 }}
+    {{- include "ebrain.componentLabels" (dict "root" . "component" "circuit-breaker-reset") | nindent 4 }}
   annotations:
     ebrain.garrytan.com/job-name: {{ $job.jobName | quote }}
 spec:
@@ -23,30 +23,32 @@ spec:
       template:
         metadata:
           labels:
-            {{- include "ebrain.componentLabels" (dict "root" . "component" "backup") | nindent 12 }}
+            {{- include "ebrain.componentLabels" (dict "root" . "component" "circuit-breaker-reset") | nindent 12 }}
         spec:
           serviceAccountName: {{ .Values.serviceAccount.name }}
           {{- include "ebrain.imagePullSecrets" . | nindent 10 }}
           restartPolicy: OnFailure
           {{- include "ebrain.podSecurityContext" . | nindent 10 }}
           containers:
-            - name: backup
+            - name: submit
               image: {{ include "ebrain.image" . | quote }}
               imagePullPolicy: {{ .Values.image.pullPolicy }}
               command:
-                - /usr/bin/env
-                - bash
-                - scripts/ebrain-backup.sh
+                - gbrain
+              args:
+                - jobs
+                - submit
+                - {{ $job.jobName | quote }}
+                - --queue
+                - {{ $job.queue | quote }}
+                - --params
+                - {{ $job.params | toJson | quote }}
+                - --priority
+                - {{ $job.priority | quote }}
+                - --max-attempts
+                - {{ $job.maxAttempts | quote }}
               env:
                 {{- include "ebrain.runtimeEnv" . | nindent 16 }}
-                - name: BRAIN_REPO_PATH
-                  value: {{ .Values.storage.brainRepo.mountPath | quote }}
-                - name: EBRAIN_BACKUP_DESTINATION
-                  value: {{ .Values.backup.destination | quote }}
-                - name: EBRAIN_BACKUP_RETENTION_DAYS
-                  value: {{ .Values.backup.retentionDays | quote }}
-                - name: EBRAIN_BACKUP_LOCAL_ONLY
-                  value: {{ ternary "1" "0" .Values.backup.localOnly | quote }}
               volumeMounts:
                 {{- include "ebrain.brainRepoMount" . | nindent 16 }}
               resources:

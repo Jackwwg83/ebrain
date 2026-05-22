@@ -47,3 +47,25 @@ export async function resetCircuit(
     [ingestSourceId],
   );
 }
+
+export interface ResetExpiredCircuitResult {
+  resetCount: number;
+  ingestSourceIds: string[];
+}
+
+export async function resetExpired(ctx: OperationContext): Promise<ResetExpiredCircuitResult> {
+  const rows = await ctx.engine.executeRaw<{ ingest_source_id: string }>(
+    `UPDATE enterprise_ingest_sources
+     SET consecutive_errors = 0,
+         circuit_open_until = NULL,
+         updated_at = now()
+     WHERE circuit_open_until IS NOT NULL
+       AND circuit_open_until <= now()
+       AND deleted_at IS NULL
+     RETURNING ingest_source_id`,
+  );
+  return {
+    resetCount: rows.length,
+    ingestSourceIds: rows.map(row => row.ingest_source_id),
+  };
+}

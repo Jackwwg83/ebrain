@@ -1229,6 +1229,42 @@ export async function registerBuiltinHandlers(worker: MinionWorker, engine: Brai
   };
   worker.register('ebrain-executive-brief-fanout', ebrainExecutiveBriefFanoutHandler);
 
+  const ebrainWeeklyAuditReviewHandler: MinionHandler = async () => {
+    const { runWeeklyAuditReview } = await import('../ebrain/jobs/weekly-audit-review.ts');
+    const ctx: OperationContext = {
+      engine,
+      config: { engine: engine.kind },
+      logger: {
+        info: (msg) => process.stderr.write(`[ebrain-weekly-audit-review] ${msg}\n`),
+        warn: (msg) => process.stderr.write(`[ebrain-weekly-audit-review] WARN ${msg}\n`),
+        error: (msg) => process.stderr.write(`[ebrain-weekly-audit-review] ERROR ${msg}\n`),
+      },
+      dryRun: false,
+      remote: false,
+      sourceId: 'enterprise',
+    } as OperationContext;
+    return runWeeklyAuditReview(ctx);
+  };
+  worker.register('ebrain-weekly-audit-review', ebrainWeeklyAuditReviewHandler);
+
+  const ebrainCircuitBreakerResetHandler: MinionHandler = async () => {
+    const { runCircuitBreakerReset } = await import('../ebrain/jobs/circuit-breaker-reset.ts');
+    const ctx: OperationContext = {
+      engine,
+      config: { engine: engine.kind },
+      logger: {
+        info: (msg) => process.stderr.write(`[ebrain-circuit-breaker-reset] ${msg}\n`),
+        warn: (msg) => process.stderr.write(`[ebrain-circuit-breaker-reset] WARN ${msg}\n`),
+        error: (msg) => process.stderr.write(`[ebrain-circuit-breaker-reset] ERROR ${msg}\n`),
+      },
+      dryRun: false,
+      remote: false,
+      sourceId: 'enterprise',
+    } as OperationContext;
+    return runCircuitBreakerReset(ctx);
+  };
+  worker.register('ebrain-circuit-breaker-reset', ebrainCircuitBreakerResetHandler);
+
   // Shell handler is always registered. Runtime env guard lives inside the
   // handler so claimed jobs emit a clear rejection log on workers missing
   // GBRAIN_ALLOW_SHELL_JOBS=1.
