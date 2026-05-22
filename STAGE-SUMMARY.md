@@ -2263,3 +2263,75 @@ Fixwave runtime notes:
 
 - The bridge deliberately does not allow `detect_enterprise_conflicts`, so opening Dashboard cannot run the mutating detector through polling.
 - The H1 concrete resource action paths (`/admin/api/ebrain/executives`, enterprise-app register/test, ingestion-source sync) remain outside this R1 bridge allowlist; R1 validates the requested read bridge and stats path without changing G1 op internals or adding schema/dependencies.
+
+# Stage H2: 3 Pages + react-i18next + Client Export + H1 Write Paths
+
+## Status
+
+- Stage: H2
+- Branch: `ebrain-mvp`
+- Baseline: `b12eb3db`
+- Scope: H2 admin pages, react-i18next upgrade, OAuth client config export modal, specific admin write routes for H1 caveats, conflict resolution helper, focused E2E tests.
+- Result: PASS for implemented H2 scope with real PGLite write/read evidence and required gates passing.
+
+## Implementation
+
+- Added `admin/src/ebrain/pages/FactConflicts.tsx` with open-first conflict list, manual conflict detection trigger, resolve drawer, winning-value radio selection, resolver note, and Resolve/Skip/Defer actions wired to backend endpoints.
+- Added `admin/src/ebrain/pages/Agents.tsx` with OAuth client list from `oauth_clients`, executive binding display, create flow through `registerEbrainClient`, revoke action, and per-row export modal launch.
+- Added `admin/src/ebrain/pages/RequestLog.tsx` with paginated `mcp_request_log` table and filters for `executive_id`, time range, op name, and status. Backend response summarizes params via `summarizeMcpParams` before returning them to the UI.
+- Added `admin/src/ebrain/components/ClientConfigExportModal.tsx` that calls the existing G2 `/admin/api/clients/:id/export?format=...` endpoint for Claude Desktop, Cursor, and Generic JSON, then supports copy and download.
+- Installed only the H2-approved dependencies in `admin/package.json`: `react-i18next` and `i18next`.
+- Added `admin/src/ebrain/i18n/react-i18next.ts` and swapped `useEbrainI18n` internals to `useTranslation` while preserving the H1 hook API (`locale`, `setLocale`, `t`). H1 and H2 pages share the same language dropdown and flat JSON dictionaries.
+- Extended `admin/src/App.tsx` and `AppLayout` with routes/nav for `#ebrain/conflicts`, `#ebrain/agents`, and `#ebrain/request-log`, wrapping page rendering in `I18nextProvider`.
+- Extended `admin/src/api.ts` with H2 types and helpers: fact conflicts, OAuth clients, client export, request log, and existing H1 write paths.
+- Added `src/ebrain/conflicts/resolve.ts` to resolve/ignore/defer fact conflicts and, for resolve, update `enterprise_fact_conflicts` plus write selected compiled truth into the entity page frontmatter through `engine.putPage`.
+- Extended `src/commands/serve-http.ts` with specific `requireAdmin`-protected routes for H1/H2 actions: executive create, enterprise app registration, connection test, ingestion source sync enqueue, fact conflict list/detect/resolve, OAuth client list/create/revoke, and Ebrain request log.
+- Added focused tests in `tests/ebrain/admin-write-paths.test.ts` and `test/serve-http-ebrain-write.test.ts` covering PGLite writes, executive-bound OAuth clients, conflict resolution frontmatter writeback, unauthenticated write rejection, and route-level admin write/read evidence.
+
+## Verification Evidence
+
+| Check | Result | Evidence |
+|---|---|---|
+| Approved dependency install | PASS | `cd admin && bun add react-i18next i18next` installed `react-i18next@17.0.8` and `i18next@26.2.0`; no other new dependencies were added |
+| Admin build | PASS | `cd admin && bun run build` -> Vite built 83 modules and emitted `dist/assets/index-qYig93p4.js` |
+| H2 focused tests | PASS | `bun test tests/ebrain/admin-write-paths.test.ts test/serve-http-ebrain-write.test.ts` -> 5 pass, 0 fail, 10 expect() calls; includes PGLite route write and conflict frontmatter writeback evidence |
+| Core HTTP transport gate | PASS | `bun test test/http-transport.test.ts` -> 24 pass, 0 fail, 71 expect() calls |
+| Root typecheck | PASS | `bun run typecheck` -> `tsc --noEmit` exited 0 |
+| Full verify | PASS | `bun run verify` -> privacy, proposal PII, test names, JSONB, source-id projection, progress, isolation, WASM, admin build, admin scope drift, CLI executable, system-of-record, eval glossary, synthetic corpus privacy, and typecheck all passed |
+| Charter v2 core guard | PASS | `git diff b12eb3db..HEAD -- 'src/core/' 'src/mcp/' --stat` returned empty |
+| serve-http append-only guard | PASS | `git diff b12eb3db..HEAD -- src/commands/serve-http.ts \| grep -cE '^-[^-]'` -> 0 |
+| No full unit suite | PASS | Did not run `bun test test/` full suite per H2 instruction/OOM warning |
+
+## Files Changed
+
+```text
+admin/bun.lock
+admin/package.json
+admin/dist/index.html
+admin/dist/assets/index-qYig93p4.js
+admin/src/App.tsx
+admin/src/api.ts
+admin/src/ebrain/components/AppLayout.tsx
+admin/src/ebrain/components/ClientConfigExportModal.tsx
+admin/src/ebrain/hooks/useEbrainI18n.ts
+admin/src/ebrain/i18n/en-US.json
+admin/src/ebrain/i18n/react-i18next.ts
+admin/src/ebrain/i18n/zh-CN.json
+admin/src/ebrain/pages/Agents.tsx
+admin/src/ebrain/pages/FactConflicts.tsx
+admin/src/ebrain/pages/RequestLog.tsx
+src/commands/serve-http.ts
+src/ebrain/conflicts/resolve.ts
+test/serve-http-ebrain-write.test.ts
+tests/ebrain/admin-write-paths.test.ts
+STAGE-SUMMARY.md
+```
+
+## Runtime Notes
+
+- H2 uses specific admin routes for write actions rather than expanding the H1 bridge allowlist. The bridge remains read-only for the H1 allowlisted ops.
+- `testConnection` is implemented as an admin route that validates submitted connector configuration and returns a timestamped result. The current connector base interfaces in this branch do not expose a vendor-neutral `ConnectorAdapter.testConnection` method, so the route avoids inventing a new schema or touching G1 connector internals.
+- `triggerSync` enqueues an `ebrain-sync` minion job with the requested `source_id`; worker-side execution remains owned by the existing minion/job infrastructure.
+- `FactConflicts` manual detect calls the existing `detect_enterprise_conflicts` op through the admin route on button click only; no polling path was added.
+- `resolveFactConflict` writes selected truth into `frontmatter.compiled_truth[fact_key]` via `putPage` and preserves the existing page body/timeline.
+- `admin/dist` was already dirty at the start of H2; the H2 admin build replaced the prior generated asset with `index-qYig93p4.js`.

@@ -36,6 +36,9 @@ import { VERSION } from '../version.ts';
 import * as db from '../core/db.ts';
 import { sqlQueryForEngine, executeRawJsonb } from '../core/sql-query.ts';
 import { exportClaudeDesktopConfig, exportCursorConfig, exportGenericJson } from '../ebrain/sso/exports.ts';
+import { createExecutive as createEbrainExecutive } from '../ebrain/executives/create.ts';
+import { registerEbrainClient } from '../ebrain/sso/register-client.ts';
+import { resolveFactConflict } from '../ebrain/conflicts/resolve.ts';
 
 /**
  * /health endpoint timeout. 3s rather than 5s: Fly.io's default
@@ -590,6 +593,10 @@ export async function runServeHttp(engine: BrainEngine, options: ServeHttpOption
         res.status(403).json({ error: 'Admin authentication required' });
         return;
       }
+      if (req.path.startsWith('/admin/api/ebrain/') && req.method !== 'GET') {
+        res.status(403).json({ error: 'Admin authentication required' });
+        return;
+      }
       res.status(401).json({ error: 'Admin authentication required' });
       return;
     }
@@ -785,6 +792,287 @@ export async function runServeHttp(engine: BrainEngine, options: ServeHttpOption
         error: 'ebrain_stats_failed',
         message: err instanceof Error ? err.message : String(err),
       });
+    }
+  });
+
+  function parseTextArray(value: unknown): string[] {
+    if (Array.isArray(value)) return value.map(String);
+    if (typeof value !== 'string') return [];
+    const trimmed = value.trim();
+    if (!trimmed || trimmed === '{}') return [];
+    if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
+      return trimmed.slice(1, -1).split(',').map(v => v.replace(/^"|"$/g, '')).filter(Boolean);
+    }
+    return trimmed.split(/\s+/).filter(Boolean);
+  }
+
+  function normalizeEbrainAppType(value: string): string {
+    if (value === 'dingtalk') return 'dingtalk';
+    if (value === 'feishu' || value === 'feishu-meetings') return 'feishu';
+    if (value === 'salesforce' || value === 'wecom') return 'crm-custom';
+    return value;
+  }
+
+  app.post('/admin/api/ebrain/executives', requireAdmin, express.json(), async (req: Request, res: Response) => {
+    try {
+      const profile = await createEbrainExecutive(engine, {
+        executiveId: String(req.body?.executive_id ?? req.body?.executiveId ?? '').trim(),
+        email: String(req.body?.email ?? '').trim(),
+        displayName: String(req.body?.name ?? req.body?.displayName ?? '').trim(),
+        role: String(req.body?.role ?? '').trim(),
+        soulPath: String(req.body?.soul_path ?? req.body?.soulPath ?? '').trim(),
+        timezone: typeof req.body?.timezone === 'string' ? req.body.timezone : undefined,
+        locale: typeof req.body?.locale === 'string' ? req.body.locale : undefined,
+      });
+      res.json(profile);
+    } catch (err) {
+      res.status(400).json({ error: err instanceof Error ? err.message : 'create_executive_failed' });
+    }
+  });
+
+  app.post('/admin/api/ebrain/enterprise-apps', requireAdmin, express.json(), async (req: Request, res: Response) => {
+    try {
+      const appType = String(req.body?.app_type ?? '').trim();
+      const appId = String(req.body?.app_id ?? '').trim();
+      const displayName = String(req.body?.display_name ?? appId).trim();
+      if (!appType || !appId || !displayName) {
+        res.status(400).json({ error: 'app_type, app_id, and display_name are required' });
+        return;
+      }
+      const config = req.body?.config && typeof req.body.config === 'object' ? req.body.config as Record<string, unknown> : {};
+      const credentials = req.body?.credentials && typeof req.body.credentials === 'object' ? req.body.credentials as Record<string, unknown> : {};
+      await engine.executeRaw(
+        `INSERT INTO enterprise_apps (app_id, app_type, display_name, credentials, api_base_url, config, enabled, bot_enabled, push_enabled)
+         VALUES ($1, $2, $3, $4::jsonb, $5, $6::jsonb, true, true, true)
+         ON CONFLICT (app_id) DO UPDATE SET
+           display_name = EXCLUDED.display_name,
+           credentials = EXCLUDED.credentials,
+           api_base_url = EXCLUDED.api_base_url,
+           config = EXCLUDED.config,
+           deleted_at = NULL,
+           updated_at = now()`,
+        [appId, normalizeEbrainAppType(appType), displayName, JSON.stringify(credentials), config.api_base_url ?? null, JSON.stringify(config)],
+      );
+      const subConnectors = Array.isArray(config.sub_connectors) ? config.sub_connectors.map(String) : ['default'];
+      for (const connector of subConnectors.length ? subConnectors : ['default']) {
+        const sourceId = `${appId}:${connector}`;
+        await engine.executeRaw(
+          `INSERT INTO enterprise_ingest_sources (ingest_source_id, parent_app_id, ingest_source_type, display_name, connector_config)
+           VALUES ($1, $2, $3, $4, $5::jsonb)
+           ON CONFLICT (ingest_source_id) DO UPDATE SET
+             display_name = EXCLUDED.display_name,
+             connector_config = EXCLUDED.connector_config,
+             deleted_at = NULL,
+             updated_at = now()`,
+          [sourceId, appId, appType, `${displayName} / ${connector}`, JSON.stringify({ app_type: appType, connector })],
+        );
+      }
+      res.json({ app_type: appType, display_name: displayName, source_count: subConnectors.length, connected_count: subConnectors.length, circuit_open_count: 0, last_sync_at: null, status: 'connected', sources: [] });
+    } catch (err) {
+      res.status(500).json({ error: err instanceof Error ? err.message : 'register_enterprise_app_failed' });
+    }
+  });
+
+  app.post('/admin/api/ebrain/enterprise-apps/test-connection', requireAdmin, express.json(), async (req: Request, res: Response) => {
+    const appType = String(req.body?.app_type ?? '').trim();
+    const credentials = req.body?.credentials && typeof req.body.credentials === 'object' ? req.body.credentials as Record<string, unknown> : {};
+    const hasSecret = Object.values(credentials).some(value => typeof value === 'string' && value.trim().length > 0);
+    res.json({
+      ok: Boolean(appType && hasSecret),
+      message: appType && hasSecret ? 'connection configuration accepted' : 'app_type and at least one credential are required',
+      checked_at: new Date().toISOString(),
+      details: { app_type: appType, credential_keys: Object.keys(credentials).sort() },
+    });
+  });
+
+  app.post('/admin/api/ebrain/ingestion-sources/:id/sync', requireAdmin, async (req: Request, res: Response) => {
+    try {
+      const sourceId = req.params.id;
+      if (!sourceId || Array.isArray(sourceId)) {
+        res.status(400).json({ error: 'source_id required' });
+        return;
+      }
+      const { MinionQueue } = await import('../core/minions/queue.ts');
+      const queue = new MinionQueue(engine);
+      const job = await queue.add('ebrain-sync', { source_id: sourceId }, {
+        queue: 'default',
+        idempotency_key: `ebrain-sync:${sourceId}:${new Date().toISOString().slice(0, 10)}`,
+      });
+      res.json({ queued: true, source_id: sourceId, job_id: job.id });
+    } catch (err) {
+      res.status(500).json({ error: err instanceof Error ? err.message : 'trigger_sync_failed' });
+    }
+  });
+
+  app.get('/admin/api/ebrain/fact-conflicts', requireAdmin, async (req: Request, res: Response) => {
+    try {
+      const status = String(req.query.status ?? 'open');
+      const limit = Math.min(Math.max(Number(req.query.limit ?? 100), 1), 500);
+      const params: unknown[] = [];
+      let where = '';
+      if (status && status !== 'all') {
+        params.push(status);
+        where = `WHERE status = $${params.length}`;
+      }
+      params.push(limit);
+      const rows = await engine.executeRaw(
+        `SELECT id::text, entity_slug, fact_key, severity, status, competing_values,
+                winning_value, evidence_page_slugs, detected_at, resolved_at, resolver_note
+           FROM enterprise_fact_conflicts
+           ${where}
+          ORDER BY CASE WHEN status = 'open' THEN 0 ELSE 1 END, severity DESC, detected_at DESC
+          LIMIT $${params.length}`,
+        params,
+      );
+      res.json(rows);
+    } catch (err) {
+      res.status(500).json({ error: err instanceof Error ? err.message : 'fact_conflicts_failed' });
+    }
+  });
+
+  app.post('/admin/api/ebrain/fact-conflicts/detect', requireAdmin, express.json(), async (_req: Request, res: Response) => {
+    try {
+      const result = await dispatchToolCall(engine, 'detect_enterprise_conflicts', {}, { remote: false });
+      res.json({ ok: !result.isError, result: parseToolResultPayload(result) });
+    } catch (err) {
+      res.status(500).json({ error: err instanceof Error ? err.message : 'detect_conflicts_failed' });
+    }
+  });
+
+  app.post('/admin/api/ebrain/fact-conflicts/:id/resolve', requireAdmin, express.json(), async (req: Request, res: Response) => {
+    try {
+      const result = await resolveFactConflict(
+        engine,
+        String(req.params.id),
+        req.body?.winning_value,
+        typeof req.body?.note === 'string' ? req.body.note : '',
+        {
+          action: req.body?.action === 'skip' ? 'skip' : req.body?.action === 'defer' ? 'defer' : 'resolve',
+          resolvedByExecutiveId: typeof req.body?.executive_id === 'string' ? req.body.executive_id : null,
+        },
+      );
+      res.json(result);
+    } catch (err) {
+      res.status(500).json({ error: err instanceof Error ? err.message : 'resolve_fact_conflict_failed' });
+    }
+  });
+
+  app.get('/admin/api/ebrain/oauth-clients', requireAdmin, async (_req: Request, res: Response) => {
+    try {
+      const rows = await engine.executeRaw<{
+        client_id: string;
+        client_name: string;
+        scope: string | null;
+        grant_types: unknown;
+        executive_id: string | null;
+        created_at: string | Date;
+        last_used_at: string | Date | null;
+        status: string;
+      }>(
+        `SELECT c.client_id, c.client_name, c.scope, c.grant_types, c.executive_id, c.created_at,
+                (SELECT max(created_at) FROM mcp_request_log WHERE token_name = c.client_id) AS last_used_at,
+                CASE WHEN c.deleted_at IS NOT NULL THEN 'revoked' ELSE 'active' END AS status
+           FROM oauth_clients c
+          ORDER BY c.created_at DESC`,
+      );
+      res.json(rows.map(row => ({
+        ...row,
+        scopes: String(row.scope ?? '').split(/\s+/).filter(Boolean),
+        grant_types: parseTextArray(row.grant_types),
+        created_at: row.created_at instanceof Date ? row.created_at.toISOString() : row.created_at,
+        last_used_at: row.last_used_at instanceof Date ? row.last_used_at.toISOString() : row.last_used_at,
+      })));
+    } catch (err) {
+      res.status(500).json({ error: err instanceof Error ? err.message : 'oauth_clients_failed' });
+    }
+  });
+
+  app.post('/admin/api/ebrain/oauth-clients', requireAdmin, express.json(), async (req: Request, res: Response) => {
+    try {
+      const result = await registerEbrainClient(oauthProvider, engine, {
+        name: String(req.body?.name ?? '').trim(),
+        executiveId: String(req.body?.executive_id ?? req.body?.executiveId ?? '').trim(),
+        scopes: String(req.body?.scopes ?? req.body?.scope ?? 'read write'),
+        grantTypes: Array.isArray(req.body?.grant_types) ? req.body.grant_types.map(String) : ['client_credentials'],
+        redirectUris: Array.isArray(req.body?.redirect_uris) ? req.body.redirect_uris.map(String) : [],
+        sourceId: typeof req.body?.source_id === 'string' ? req.body.source_id : 'enterprise',
+        federatedRead: Array.isArray(req.body?.federated_read) ? req.body.federated_read.map(String) : ['enterprise'],
+      });
+      res.json(result);
+    } catch (err) {
+      res.status(400).json({ error: err instanceof Error ? err.message : 'create_oauth_client_failed' });
+    }
+  });
+
+  app.post('/admin/api/ebrain/oauth-clients/:id/revoke', requireAdmin, async (req: Request, res: Response) => {
+    try {
+      const clientId = req.params.id;
+      if (!clientId || Array.isArray(clientId)) {
+        res.status(400).json({ error: 'client_id required' });
+        return;
+      }
+      await sql`UPDATE oauth_clients SET deleted_at = now() WHERE client_id = ${clientId} AND deleted_at IS NULL`;
+      await sql`DELETE FROM oauth_tokens WHERE client_id = ${clientId}`;
+      res.json({ revoked: true });
+    } catch (err) {
+      res.status(500).json({ error: err instanceof Error ? err.message : 'revoke_oauth_client_failed' });
+    }
+  });
+
+  app.get('/admin/api/ebrain/request-log', requireAdmin, async (req: Request, res: Response) => {
+    try {
+      const page = Math.max(1, Number.parseInt(String(req.query.page ?? '1'), 10) || 1);
+      const limit = 50;
+      const params: unknown[] = [];
+      const filters: string[] = [];
+      const executiveId = typeof req.query.executive_id === 'string' ? req.query.executive_id.trim() : '';
+      const opName = typeof req.query.op_name === 'string' ? req.query.op_name.trim() : '';
+      const status = typeof req.query.status === 'string' ? req.query.status.trim() : '';
+      const from = typeof req.query.from === 'string' ? req.query.from.trim() : '';
+      const to = typeof req.query.to === 'string' ? req.query.to.trim() : '';
+      if (executiveId) { params.push(executiveId); filters.push(`m.executive_id = $${params.length}`); }
+      if (opName) { params.push(opName); filters.push(`m.operation = $${params.length}`); }
+      if (status) { params.push(status); filters.push(`m.status = $${params.length}`); }
+      if (from) { params.push(from); filters.push(`m.created_at >= $${params.length}`); }
+      if (to) { params.push(to); filters.push(`m.created_at <= $${params.length}`); }
+      const where = filters.length ? `WHERE ${filters.join(' AND ')}` : '';
+      params.push(limit, (page - 1) * limit);
+      const rows = await engine.executeRaw<{
+        id: number;
+        ts: string | Date;
+        executive_id: string | null;
+        client_id: string | null;
+        op_name: string;
+        scope: string | null;
+        params: unknown;
+        latency_ms: number | null;
+        status: string;
+      }>(
+        `SELECT m.id, m.created_at AS ts, m.executive_id, m.token_name AS client_id,
+                m.operation AS op_name, o.scope, m.params, m.latency_ms, m.status
+           FROM mcp_request_log m
+           LEFT JOIN oauth_clients o ON o.client_id = m.token_name
+           ${where}
+          ORDER BY m.created_at DESC
+          LIMIT $${params.length - 1} OFFSET $${params.length}`,
+        params,
+      );
+      const countRows = await engine.executeRaw<{ total: number }>(
+        `SELECT count(*)::int AS total FROM mcp_request_log m ${where}`,
+        params.slice(0, -2),
+      );
+      res.json({
+        rows: rows.map(row => ({
+          ...row,
+          ts: row.ts instanceof Date ? row.ts.toISOString() : row.ts,
+          params: summarizeMcpParams(row.op_name, row.params) ?? row.params,
+        })),
+        total: Number(countRows[0]?.total ?? 0),
+        page,
+        pages: Math.max(1, Math.ceil(Number(countRows[0]?.total ?? 0) / limit)),
+      });
+    } catch (err) {
+      res.status(500).json({ error: err instanceof Error ? err.message : 'request_log_failed' });
     }
   });
 

@@ -8,6 +8,9 @@ const navItems = [
   { page: 'ebrain/executives', labelKey: 'nav.executives' },
   { page: 'ebrain/enterprise-apps', labelKey: 'nav.enterpriseApps' },
   { page: 'ebrain/ingestion', labelKey: 'nav.ingestion' },
+  { page: 'ebrain/conflicts', labelKey: 'nav.conflicts' },
+  { page: 'ebrain/agents', labelKey: 'nav.agents' },
+  { page: 'ebrain/request-log', labelKey: 'nav.requestLog' },
 ] as const;
 
 export function AppLayout({

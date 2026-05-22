@@ -284,3 +284,139 @@ export async function getStats(): Promise<EbrainStats> {
 export function getEbrainEventSource(): EventSource {
   return new EventSource('/admin/events');
 }
+
+export interface EbrainFactConflictValue {
+  value: unknown;
+  source_type?: string;
+  sourceType?: string;
+  page_slug?: string;
+  pageSlug?: string;
+  confidence?: number | null;
+  observed_at?: string | null;
+}
+
+export interface EbrainFactConflict {
+  id: string;
+  entity_slug: string;
+  fact_key: string;
+  severity: number;
+  status: 'open' | 'resolved' | 'ignored' | 'deferred' | string;
+  competing_values: EbrainFactConflictValue[];
+  winning_value?: unknown;
+  evidence_page_slugs: string[];
+  detected_at: string;
+  resolved_at?: string | null;
+  resolver_note?: string | null;
+}
+
+export interface ResolveFactConflictInput {
+  winning_value?: unknown;
+  note?: string;
+  action?: 'resolve' | 'skip' | 'defer';
+  executive_id?: string;
+}
+
+export interface EbrainOAuthClient {
+  client_id: string;
+  client_name: string;
+  scope: string | null;
+  scopes: string[];
+  grant_types: string[];
+  executive_id: string | null;
+  created_at: string;
+  last_used_at: string | null;
+  status: string;
+}
+
+export interface CreateOAuthClientInput {
+  name: string;
+  executive_id: string;
+  scopes: string;
+  grant_types?: string[];
+  redirect_uris?: string[];
+  source_id?: string;
+  federated_read?: string[];
+}
+
+export interface EbrainRequestLogRow {
+  id: number;
+  ts: string;
+  executive_id: string | null;
+  client_id: string | null;
+  op_name: string;
+  scope: string | null;
+  params: unknown;
+  latency_ms: number | null;
+  status: string;
+}
+
+export interface EbrainRequestLogResponse {
+  rows: EbrainRequestLogRow[];
+  total: number;
+  page: number;
+  pages: number;
+}
+
+function toQuery(params: Record<string, string | number | undefined>): string {
+  const qs = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== undefined && value !== '') qs.set(key, String(value));
+  }
+  const text = qs.toString();
+  return text ? `?${text}` : '';
+}
+
+export async function getFactConflicts(opts: { status?: string; limit?: number } = {}): Promise<EbrainFactConflict[]> {
+  return apiFetch(`/admin/api/ebrain/fact-conflicts${toQuery({ status: opts.status, limit: opts.limit ?? 100 })}`) as Promise<EbrainFactConflict[]>;
+}
+
+export async function detectFactConflicts(): Promise<unknown> {
+  return apiFetch('/admin/api/ebrain/fact-conflicts/detect', { method: 'POST', body: '{}' });
+}
+
+export async function resolveFactConflict(conflictId: string, input: ResolveFactConflictInput): Promise<unknown> {
+  return apiFetch(`/admin/api/ebrain/fact-conflicts/${encodeURIComponent(conflictId)}/resolve`, {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
+
+export async function getOAuthClients(): Promise<EbrainOAuthClient[]> {
+  return apiFetch('/admin/api/ebrain/oauth-clients') as Promise<EbrainOAuthClient[]>;
+}
+
+export async function createOAuthClient(input: CreateOAuthClientInput): Promise<unknown> {
+  return apiFetch('/admin/api/ebrain/oauth-clients', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
+
+export async function revokeOAuthClient(clientId: string): Promise<{ revoked: boolean }> {
+  return apiFetch(`/admin/api/ebrain/oauth-clients/${encodeURIComponent(clientId)}/revoke`, {
+    method: 'POST',
+    body: '{}',
+  }) as Promise<{ revoked: boolean }>;
+}
+
+export async function exportClientConfig(clientId: string, format: 'claude-desktop' | 'cursor' | 'json'): Promise<unknown> {
+  return apiFetch(`/admin/api/clients/${encodeURIComponent(clientId)}/export?format=${encodeURIComponent(format)}`);
+}
+
+export async function getRequestLog(opts: {
+  page?: number;
+  executive_id?: string;
+  from?: string;
+  to?: string;
+  op_name?: string;
+  status?: string;
+} = {}): Promise<EbrainRequestLogResponse> {
+  return apiFetch(`/admin/api/ebrain/request-log${toQuery({
+    page: opts.page ?? 1,
+    executive_id: opts.executive_id,
+    from: opts.from,
+    to: opts.to,
+    op_name: opts.op_name,
+    status: opts.status,
+  })}`) as Promise<EbrainRequestLogResponse>;
+}
