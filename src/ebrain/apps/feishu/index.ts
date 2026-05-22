@@ -1,3 +1,2 @@
-/** Feishu EnterpriseApp scaffold placeholder. */
-/** Stage C1 will provide the concrete adapter. */
-export {};
+export * from './app.ts';
+export * from './token-manager.ts';

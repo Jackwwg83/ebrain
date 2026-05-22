@@ -876,11 +876,13 @@ export async function runServeHttp(engine: BrainEngine, options: ServeHttpOption
   app.post('/admin/api/ebrain/enterprise-apps/test-connection', requireAdmin, express.json(), async (req: Request, res: Response) => {
     const appType = String(req.body?.app_type ?? '').trim();
     const credentials = req.body?.credentials && typeof req.body.credentials === 'object' ? req.body.credentials as Record<string, unknown> : {};
-    const hasSecret = Object.values(credentials).some(value => typeof value === 'string' && value.trim().length > 0);
+    const config = req.body?.config && typeof req.body.config === 'object' ? req.body.config as Record<string, unknown> : {};
+    const { testEnterpriseConnection } = await import('../ebrain/apps/test-connection-dispatch.ts');
+    const result = await testEnterpriseConnection({ appType, credentials, config, appId: String(req.body?.app_id ?? '').trim(), displayName: String(req.body?.display_name ?? '').trim(), engine });
     res.json({
-      ok: Boolean(appType && hasSecret),
-      message: appType && hasSecret ? 'connection configuration accepted' : 'app_type and at least one credential are required',
-      checked_at: new Date().toISOString(),
+      ok: result.ok,
+      message: result.message,
+      checked_at: result.checked_at,
       details: { app_type: appType, credential_keys: Object.keys(credentials).sort() },
     });
   });

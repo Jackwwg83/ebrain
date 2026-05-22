@@ -31,6 +31,12 @@ function normalizeValues(conflict: EbrainFactConflict): EbrainFactConflictValue[
   return values;
 }
 
+function conflictStatusLabel(status: string, t: (key: string) => string): string {
+  const key = `FactConflicts.status.${status}`;
+  const label = t(key);
+  return label === key ? status : label;
+}
+
 export function EbrainFactConflictsPage() {
   const { locale, setLocale, t } = useEbrainI18n();
   const [rows, setRows] = useState<EbrainFactConflict[]>([]);
@@ -79,11 +85,11 @@ export function EbrainFactConflictsPage() {
       actions={(
         <>
           <select value={status} onChange={event => setStatus(event.target.value)} style={{ width: 130 }}>
-            <option value="open">open</option>
-            <option value="resolved">resolved</option>
-            <option value="ignored">ignored</option>
-            <option value="deferred">deferred</option>
-            <option value="all">all</option>
+            <option value="open">{t('FactConflicts.status.open')}</option>
+            <option value="resolved">{t('FactConflicts.status.resolved')}</option>
+            <option value="ignored">{t('FactConflicts.status.ignored')}</option>
+            <option value="deferred">{t('FactConflicts.status.deferred')}</option>
+            <option value="all">{t('FactConflicts.status.all')}</option>
           </select>
           <button className="btn btn-secondary" onClick={load}>{t('common.refresh')}</button>
           <button className="btn btn-primary" onClick={runDetect} disabled={detecting}>{detecting ? t('common.loading') : t('conflicts.detect')}</button>
@@ -114,7 +120,7 @@ export function EbrainFactConflictsPage() {
                 <td className="mono">{row.fact_key}</td>
                 <td>{normalizeValues(row).map(v => valueText(v.value)).join(' / ')}</td>
                 <td className="mono">{row.severity}</td>
-                <td><StatusBadge tone={toneFromState(row.status)}>{row.status}</StatusBadge></td>
+                <td><StatusBadge tone={toneFromState(row.status)}>{conflictStatusLabel(row.status, t)}</StatusBadge></td>
                 <td>{new Date(row.detected_at).toLocaleString()}</td>
               </tr>
             ))}
@@ -175,7 +181,7 @@ function ResolveDrawer({ conflict, onClose, onDone, t }: {
               <strong>{index === 0 ? t('conflicts.winningCandidate') : t('conflicts.losingCandidate')}</strong>
               <pre className="code-block" style={{ whiteSpace: 'pre-wrap', marginTop: 8 }}>{valueText(item.value)}</pre>
               <div style={{ color: 'var(--text-muted)', fontSize: 12 }}>
-                {item.source_type ?? item.sourceType ?? 'unknown'} / {item.page_slug ?? item.pageSlug ?? '--'} / confidence {item.confidence ?? '--'}
+                {t('FactConflicts.sourceType')}: {item.source_type ?? item.sourceType ?? t('common.unknown')} / {t('FactConflicts.pageSlug')}: {item.page_slug ?? item.pageSlug ?? '--'} / {t('FactConflicts.confidence')}: {item.confidence ?? '--'}
               </div>
             </label>
           ))}

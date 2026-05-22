@@ -77,11 +77,11 @@ export function EbrainEnterpriseAppsPage() {
           <table>
             <thead>
               <tr>
-                <th>app_type</th>
+                <th>{t('apps.column.appType')}</th>
                 <th>{t('apps.displayName')}</th>
                 <th>{t('apps.sourceCount', { count: '' }).trim()}</th>
-                <th>last_sync_at</th>
-                <th>status</th>
+                <th>{t('apps.column.lastSync')}</th>
+                <th>{t('apps.column.status')}</th>
               </tr>
             </thead>
             <tbody>
@@ -209,7 +209,7 @@ function RegisterWizard({ onClose, onSaved, t }: {
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
             <label>{t('apps.appId')}<input value={input.app_id} onChange={event => setField('app_id', event.target.value)} /></label>
             <label>{t('apps.displayName')}<input value={input.display_name} onChange={event => setField('display_name', event.target.value)} /></label>
-            <label>client_id<input value={input.credentials.client_id ?? ''} onChange={event => setCredential('client_id', event.target.value)} /></label>
+            <label>{t('apps.clientId')}<input value={input.credentials.client_id ?? ''} onChange={event => setCredential('client_id', event.target.value)} /></label>
             <label>{t('apps.secret')}<input type="password" value={input.credentials.client_secret ?? ''} onChange={event => setCredential('client_secret', event.target.value)} /></label>
             <label>{t('apps.baseUrl')}<input value={input.config.api_base_url ?? ''} onChange={event => setConfig('api_base_url', event.target.value)} /></label>
             <label>{t('apps.webhook')}<input type="password" value={input.config.webhook_token ?? ''} onChange={event => setConfig('webhook_token', event.target.value)} /></label>

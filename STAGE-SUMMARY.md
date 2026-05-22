@@ -2330,8 +2330,35 @@ STAGE-SUMMARY.md
 ## Runtime Notes
 
 - H2 uses specific admin routes for write actions rather than expanding the H1 bridge allowlist. The bridge remains read-only for the H1 allowlisted ops.
-- `testConnection` is implemented as an admin route that validates submitted connector configuration and returns a timestamped result. The current connector base interfaces in this branch do not expose a vendor-neutral `ConnectorAdapter.testConnection` method, so the route avoids inventing a new schema or touching G1 connector internals.
+- `testConnection` is implemented as an admin route that dispatches submitted connector configuration to vendor app token refresh and returns a timestamped result. The connector base interface remains stable; H2 does not add a new vendor-neutral method.
 - `triggerSync` enqueues an `ebrain-sync` minion job with the requested `source_id`; worker-side execution remains owned by the existing minion/job infrastructure.
 - `FactConflicts` manual detect calls the existing `detect_enterprise_conflicts` op through the admin route on button click only; no polling path was added.
 - `resolveFactConflict` writes selected truth into `frontmatter.compiled_truth[fact_key]` via `putPage` and preserves the existing page body/timeline.
 - `admin/dist` was already dirty at the start of H2; the H2 admin build replaced the prior generated asset with `index-qYig93p4.js`.
+
+## Fixwave R1
+
+- Baseline: `ee57972e`; reviewer R1 findings `H-001` and `L-001` fixed in this wave.
+- H-001: added `src/ebrain/apps/test-connection-dispatch.ts` as the single admin connection-test entrypoint. It dispatches exact `app_type` values `dingtalk` and `feishu` to EnterpriseApp instances and calls `tokenManager.refresh('tenant_access', 'app')` as the real ping.
+- H-001: `wecom`, `salesforce`, `feishu-meetings`, and blank/unknown app types fail closed with `unsupported_app_type ... (supported: dingtalk, feishu)`; nonempty credentials no longer produce `ok: true`.
+- H-001: added a minimal Feishu EnterpriseApp/token manager path for the token-refresh probe, mirroring the DingTalk persistence contract without changing the stable `EnterpriseApp` interface. Pre-save probes create a soft-deleted app shell only to satisfy the token FK and do not persist submitted secrets.
+- L-001: moved RequestLog filters, columns, pagination, and success/error status labels into `zh-CN.json` / `en-US.json`; data values such as real `executive_id`, `client_id`, and raw params remain data.
+- L-001: moved FactConflicts status options plus source/confidence metadata labels into dictionaries, and swept H1 edge literals for `timezone`, profile payload, `client_id`, app-list columns, ingestion filter placeholder, and payload heading.
+
+Fixwave R1 verification:
+
+| Check | Result | Evidence |
+|---|---|---|
+| Charter v2 core guard | PASS | `git diff ee57972e -- 'src/core/' 'src/mcp/' --stat` returned empty |
+| serve-http deletion guard | PASS | `git diff ee57972e -- src/commands/serve-http.ts \| grep -cE '^-[^-]'` -> 4 |
+| Core HTTP transport gate | PASS | `bun test test/http-transport.test.ts` -> 24 pass, 0 fail, 71 expect() calls |
+| H2 focused write tests | PASS | `bun test test/serve-http-ebrain-write.test.ts tests/ebrain/admin-write-paths.test.ts` -> 6 pass, 0 fail, 13 expect() calls; route test verifies unsupported providers no longer pass on nonempty credentials |
+| Connection dispatch tests | PASS | `bun test test/test-connection-dispatch.test.ts` -> 4 pass, 0 fail, 27 expect() calls; mocked vendor token endpoints exercised DingTalk and Feishu `tokenManager.refresh`, then inspected/decrypted real PGLite `enterprise_oauth_tokens` rows |
+| Admin build | PASS | `cd admin && bun run build` -> Vite built 83 modules and emitted `dist/assets/index-OUw0lndQ.js` |
+| Root typecheck | PASS | `bun run typecheck` -> `tsc --noEmit` exited 0 |
+| Full verify | PASS | `bun run verify` -> privacy, proposal PII, test names, JSONB, source-id projection, progress, test isolation, WASM, admin build, admin scope drift, CLI executable, system-of-record, eval glossary, synthetic corpus privacy, and typecheck all passed |
+
+Fixwave R1 runtime evidence notes:
+
+- No live production/staging DingTalk or Feishu credentials were available in this fixwave. Runtime evidence is local PGLite plus mocked vendor token HTTP responses: the production code path still calls the real app token managers and only the test fetch layer is mocked.
+- The inspected artifacts were real `enterprise_oauth_tokens` rows written by the token managers, with encrypted token payloads decrypted in test to prove the refresh result was persisted.

@@ -46,7 +46,7 @@ export function EbrainIngestionPage() {
           <input
             value={filter}
             onChange={event => setFilter(event.target.value)}
-            placeholder="filter source"
+            placeholder={t('ingestion.filterPlaceholder')}
             style={{ width: 180 }}
           />
           <button className="btn btn-secondary" onClick={load}>{t('common.refresh')}</button>
@@ -129,7 +129,7 @@ function SourceDrawer({ source, onClose, onRetried, t }: {
         <button className="btn btn-primary" onClick={retry} disabled={busy}>{busy ? t('common.loading') : t('ingestion.manualRetry')}</button>
         {message && <div style={{ color: 'var(--success)', marginTop: 12 }}>{message}</div>}
         {error && <div style={{ color: 'var(--error)', marginTop: 12 }}>{error}</div>}
-        <h3 className="section-title">payload</h3>
+        <h3 className="section-title">{t('ingestion.payload')}</h3>
         <pre className="code-block" style={{ whiteSpace: 'pre-wrap' }}>{JSON.stringify(source, null, 2)}</pre>
       </aside>
     </div>

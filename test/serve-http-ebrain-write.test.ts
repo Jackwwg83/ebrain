@@ -110,4 +110,19 @@ describe('H2 serve-http ebrain write routes', () => {
     const listed = await list.json() as { result: Array<{ executiveId: string; email: string }> };
     expect(listed.result.find(row => row.executiveId === 'ceo')?.email).toBe('ceo@example.test');
   }, 30_000);
+
+  test('test-connection rejects unsupported providers instead of accepting nonempty credentials', async () => {
+    const res = await fetch(`${baseUrl}/admin/api/ebrain/enterprise-apps/test-connection`, {
+      method: 'POST',
+      headers: { Cookie: adminCookie, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        app_type: 'wecom',
+        credentials: { client_id: 'not-used', client_secret: 'not-used' },
+      }),
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json() as { ok: boolean; message: string };
+    expect(body.ok).toBe(false);
+    expect(body.message).toBe("unsupported_app_type 'wecom' (supported: dingtalk, feishu)");
+  }, 30_000);
 });

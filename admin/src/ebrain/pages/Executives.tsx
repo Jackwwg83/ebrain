@@ -146,9 +146,9 @@ function ExecutiveDrawer({ profile, onClose, t }: {
           <span style={{ color: 'var(--text-muted)' }}>{t('executives.name')}</span><span>{visibleProfile.displayName}</span>
           <span style={{ color: 'var(--text-muted)' }}>{t('executives.role')}</span><span>{visibleProfile.role}</span>
           <span style={{ color: 'var(--text-muted)' }}>{t('executives.email')}</span><span>{visibleProfile.email}</span>
-          <span style={{ color: 'var(--text-muted)' }}>timezone</span><span>{visibleProfile.timezone ?? '--'}</span>
+          <span style={{ color: 'var(--text-muted)' }}>{t('executives.timezone')}</span><span>{visibleProfile.timezone ?? '--'}</span>
         </div>
-        <h3 className="section-title">ExecutiveProfile</h3>
+        <h3 className="section-title">{t('executives.profilePayload')}</h3>
         <pre className="code-block" style={{ whiteSpace: 'pre-wrap', marginBottom: 18 }}>
           {JSON.stringify(visibleProfile, null, 2)}
         </pre>
