@@ -119,6 +119,7 @@ Data flowing into the brain. Each integration is a recipe — markdown + setup h
 - [`docs/mcp/`](docs/mcp/) — per-client MCP setup (Claude Desktop, Code, Cursor, ChatGPT, Perplexity, Cowork)
 - [`docs/eval/`](docs/eval/) — eval framework, metric glossary, methodology
 - [`docs/ethos/`](docs/ethos/) — philosophy (thin harness, fat skills, markdown as recipes, origin story)
+- [`docs/UPGRADING_FROM_GBRAIN.md`](docs/UPGRADING_FROM_GBRAIN.md) — ebrain upstream sync playbook and drift detection workflow
 - [`AGENTS.md`](AGENTS.md) — entry point for non-Claude agents
 - [`CLAUDE.md`](CLAUDE.md) — entry point for Claude Code (deep operating context)
 - [`CONTRIBUTING.md`](CONTRIBUTING.md) — contributor guide, test discipline, eval-capture mode

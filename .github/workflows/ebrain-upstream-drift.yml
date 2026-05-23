@@ -1,0 +1,84 @@
+name: Ebrain Upstream Drift
+
+# K3 stub: disabled by default to avoid development-stage notification noise.
+# To enable weekly checks, uncomment the schedule block below.
+#
+# on:
+#   schedule:
+#     - cron: "0 9 * * 1"
+#   workflow_dispatch:
+
+on:
+  workflow_dispatch:
+    inputs:
+      open_issue:
+        description: "Open a GitHub issue when drift is detected"
+        required: false
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  drift:
+    name: Check upstream drift
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout ebrain-mvp
+        uses: actions/checkout@v4
+        with:
+          ref: ebrain-mvp
+          fetch-depth: 0
+
+      - name: Configure upstream remote
+        run: |
+          git remote add upstream https://github.com/garrytan/gbrain.git
+
+      - name: Run drift check
+        id: drift
+        shell: bash
+        run: |
+          set +e
+          bash scripts/check-upstream-drift.sh > drift-report.txt 2>&1
+          status=$?
+          cat drift-report.txt
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          {
+            echo "report<<EOF"
+            cat drift-report.txt
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Open issue when requested
+        if: ${{ steps.drift.outputs.status == '1' && github.event.inputs.open_issue == 'true' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DRIFT_REPORT: ${{ steps.drift.outputs.report }}
+        run: |
+          {
+            echo "Upstream gbrain touched one or more tracked ebrain overlap files."
+            echo
+            echo '```text'
+            printf '%s\n' "$DRIFT_REPORT"
+            echo '```'
+            echo
+            echo "Follow docs/UPGRADING_FROM_GBRAIN.md before merging upstream."
+          } > drift-issue-body.md
+          gh issue create \
+            --title "Ebrain upstream drift detected" \
+            --body-file drift-issue-body.md
+
+      - name: Fail when drift detected
+        if: ${{ steps.drift.outputs.status == '1' }}
+        run: exit 1
+
+      - name: Fail on check errors
+        if: ${{ steps.drift.outputs.status != '0' && steps.drift.outputs.status != '1' }}
+        run: exit 2

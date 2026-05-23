@@ -2659,3 +2659,63 @@ tests/e2e/ebrain-full-flow.test.ts
 tests/e2e/helpers/mock-connectors.ts
 STAGE-SUMMARY.md
 ```
+
+# Stage K3: Upstream Sync Playbook + Drift Detection
+
+## Status
+
+- Stage: K3
+- Branch: `ebrain-mvp`
+- Baseline: `36f62ef9`
+- Scope: documentation, drift detection script, disabled workflow stub, README link, and stage summary only.
+- Result: Implemented the upstream sync playbook and detector. Runtime verification is limited to git-history drift detection plus K3's required core gate and repository gates; K3 intentionally produces no business data, schema rows, deployed service, or UI payload.
+
+## Implementation
+
+- Added `scripts/check-upstream-drift.sh` with `set -euo pipefail`, `--remote`, `--branch`, and `--quiet` options.
+  - The script fetches the configured upstream branch with `--no-tags`.
+  - It compares `HEAD` to `refs/remotes/<remote>/<branch>` from their merge-base.
+  - It reports upstream commit counts and risk notes for the eight known ebrain/gbrain overlap files:
+    `src/core/operations.ts`, `src/core/operations-descriptions.ts`, `src/core/oauth-provider.ts`, `src/core/types.ts`, `src/commands/serve-http.ts`, `src/commands/auth.ts`, `src/commands/jobs.ts`, and `src/cli.ts`.
+  - It exits `0` for no tracked drift, `1` for tracked drift, and `2` for usage/repo/remote/fetch/ref errors.
+  - It does not merge, rebase, stage, edit files, or create git remotes. If `upstream` is missing, it prints the explicit `git remote add upstream https://github.com/garrytan/gbrain.git` command and exits.
+- Added `docs/UPGRADING_FROM_GBRAIN.md`.
+  - Covers overview, sync cadence, preflight, Mode B merge flow, identified conflict points, sync-friendly paths, checklist, failure handling, and drift report interpretation.
+  - Documents ebrain's gbrain v0.36.3.0 fork baseline and Charter v2 0-contract-break / append-only rule.
+- Added `.github/workflows/ebrain-upstream-drift.yml` as a disabled-by-default workflow stub.
+  - `workflow_dispatch` is enabled.
+  - The weekly Monday 09:00 UTC schedule is present as commented YAML, so operators can enable it intentionally.
+  - The workflow can optionally open a GitHub issue with the drift report when manually requested.
+- Updated `README.md` append-only by adding one Docs link to `docs/UPGRADING_FROM_GBRAIN.md`.
+
+## Verification Evidence
+
+| Check | Result | Evidence |
+|---|---|---|
+| Drift script syntax | PASS | `bash -n scripts/check-upstream-drift.sh` exited 0. |
+| Drift script runtime | PASS_WITH_DRIFT | `bash scripts/check-upstream-drift.sh` fetched `upstream/master` (`1d5f69fe..a19ee8ba`), found 26 upstream commits since merge-base, reported drift on 6 tracked files, and exited 1 as designed for detected drift. |
+| Core HTTP transport gate | PASS | `bun test test/http-transport.test.ts` -> 24 pass, 0 fail, 71 expect() calls. |
+| Root typecheck | PASS | `bun run typecheck` -> `tsc --noEmit` exited 0. |
+| Full verify | PASS | `bun run verify` -> privacy, proposal PII, test names, JSONB, source-id projection, progress, test isolation, WASM, admin build, admin scope drift, CLI executable, system-of-record, eval glossary, synthetic corpus privacy, and typecheck all passed. |
+| Charter v2 src guard | PASS | `git diff 36f62ef9..HEAD -- 'src/' --stat` returned empty. |
+| Admin/skills/deploy guard | PASS | `git diff 36f62ef9..HEAD -- admin/ skills/ deploy/ --stat` returned empty. |
+| Dependency guard | PASS | No `package.json`, lockfile, or install command changes. |
+| Schema migration guard | PASS | No migration files changed. |
+| No full unit suite | PASS | Did not run `bun test test/` full suite per K3 instruction/OOM warning. |
+
+## Runtime Evidence Notes
+
+- K3 is a maintenance/documentation stage, so the real runtime artifact is the drift report produced from live git history after fetching upstream.
+- The detector is intentionally idempotent and read-only with respect to the worktree and repository configuration. It only updates the remote-tracking ref through `git fetch`.
+- Because the detector exits `1` when upstream drift exists, a non-zero self-test can be an expected actionable result rather than a script failure. The report must be inspected before any upstream merge.
+- No `src/*`, `admin/*`, `skills/*`, or `deploy/*` files were changed.
+
+## Files Changed
+
+```text
+.github/workflows/ebrain-upstream-drift.yml
+README.md
+docs/UPGRADING_FROM_GBRAIN.md
+scripts/check-upstream-drift.sh
+STAGE-SUMMARY.md
+```
