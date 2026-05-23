@@ -2606,12 +2606,22 @@ STAGE-SUMMARY.md
   - verifies live Postgres/pgvector target and v200+ migration state,
   - creates 5 executives through `createExecutive`,
   - inserts 5 mock EnterpriseApps and 5 direct `enterprise_oauth_tokens` rows without vendor OAuth,
-  - imports 5 K1 fixture connector sets through `importFromContent(..., noEmbed: true, sourceId: enterprise)`,
+  - syncs 5 local fixture connector sets through hermetic `EnterpriseConnector.runIncremental(ctx)` mock adapters that call the production `upsertEnterpriseObject` path,
   - runs the F2 enterprise-cycle parent fan-out and all 8 shard handlers, asserting 6 phases per shard plus facts/conflict DB artifacts,
   - simulates a Feishu `@brain` event through the D2 IM webhook router and asserts the mocked subagent enqueue payload,
-  - runs executive brief generation for all 5 executives with the E2 stub and real `pushMorningBrief` routing into a mock `BotAdapter.pushToUser`,
+  - runs executive brief generation for all 5 executives with a deterministic E2 mock generator and real `pushMorningBrief` routing into a mock `BotAdapter.pushToUser`,
   - starts the real HTTP admin server and calls `/admin/api/ebrain/stats`, asserting active executives, today's briefs, open conflicts, last cycle timestamp, and cycle phase payload.
 - Added package script `ebrain:e2e` pointing to `bash scripts/run-e2e-ebrain.sh`.
+
+## Fixwave R1
+
+- Baseline: `6aa84a42`; reviewer R1 verdict was FAIL with `H-001`, `M-001`, `M-002`, and `M-003`. PM scope fixed `H-001`, `M-001`, and `M-003`; `M-002` remains a known local Docker-daemon caveat.
+- H-001: added `tests/e2e/helpers/mock-connectors.ts` with five hermetic mock `EnterpriseConnector` classes (`MockFeishuConnector`, `MockDingtalkConnector`, `MockWecomConnector`, `MockCrmConnector`, `MockTencentMeetingConnector`). K2 Step 5 now instantiates those connectors and calls `runIncremental(ctx)`, which reads local fixtures, exercises token/rate-limit hooks, checks circuit state, transforms raw vendor-shaped records, calls production `upsertEnterpriseObject`, and writes connector cursor state.
+- H-001 evidence expectations in the K2 test now assert `enterprise_ingest_sources.cursor_state`, `last_success_at`, `enterprise_ingest_objects`, and the produced enterprise pages came from the mock connector transform/upsert path. The old direct `importFixtureRecord(...)` and manual `INSERT INTO enterprise_ingest_objects` helper path was removed from `tests/e2e/ebrain-full-flow.test.ts`.
+- M-001: Step 8 now injects a deterministic `generateBrief` mock through `_setExecutiveBriefDepsForTest`, records generated bodies per executive, asserts cycle/facts/conflict tokens in the body, and verifies stored brief pages carry `frontmatter.generator_stage = 'E2_mock'`.
+- M-001 support change: `src/ebrain/jobs/executive-brief.ts` now lets test deps provide `generatorStage`, defaulting production behavior to `E2_stub`.
+- M-003: `resetDatabase()` now starts with `assertTestDatabase(process.env.DATABASE_URL!)` and refuses non-test database names or non-local hosts unless `EBRAIN_E2E_ALLOW_DESTRUCTIVE=1` is explicitly set.
+- M-002 known issue: Docker-backed E2E still requires a runner with a Docker daemon; this fixwave did not attempt to replace Docker lifecycle coverage with a weaker local shortcut.
 
 ## Verification Evidence
 
@@ -2620,6 +2630,7 @@ STAGE-SUMMARY.md
 | Compose config syntax | PASS | `docker compose -f docker-compose.ebrain-test.yml config` rendered service `postgres`, image `pgvector/pgvector:pg16`, DB `ebrain_e2e`, and host port `5434`. |
 | Runner shell syntax | PASS | `bash -n scripts/run-e2e-ebrain.sh` exited 0. |
 | K2 test skip guard | PASS | `bun test tests/e2e/ebrain-full-flow.test.ts --timeout=1000` with no `DATABASE_URL` -> 0 pass, 2 skip, 0 fail. |
+| K2 R1 compile/skip guard | PASS | `bun test tests/e2e/ebrain-full-flow.test.ts --timeout=1000` with no `DATABASE_URL` -> 0 pass, 2 skip, 0 fail after mock connector helper wiring. |
 | K2 Docker-backed full flow | BLOCKED LOCALLY | `bun run ebrain:e2e` failed before tests because Docker daemon socket `/Users/jackwu/.docker/run/docker.sock` does not exist (`connect: no such file or directory`). No vendor API or LLM call was attempted. |
 | Core HTTP transport gate | PASS | `bun test test/http-transport.test.ts` -> 24 pass, 0 fail, 71 expect() calls. |
 | Root typecheck | PASS | `bun run typecheck` -> `tsc --noEmit` exited 0. |
@@ -2632,10 +2643,10 @@ STAGE-SUMMARY.md
 
 ## Runtime Evidence Notes
 
-- The E2E test is designed to inspect real produced artifacts when run with Postgres: `executives`, `enterprise_apps`, `enterprise_oauth_tokens`, `enterprise_ingest_sources`, `enterprise_ingest_objects`, `pages`, `facts`, `enterprise_fact_conflicts`, `minion_jobs`, generated brief pages, mock `pushToUser` calls, webhook subagent job data, and `/admin/api/ebrain/stats` JSON.
+- The E2E test is designed to inspect real produced artifacts when run with Postgres: `executives`, `enterprise_apps`, `enterprise_oauth_tokens`, `enterprise_ingest_sources` cursor/last-success fields, `enterprise_ingest_objects`, `pages`, `facts`, `enterprise_fact_conflicts`, `minion_jobs`, generated brief pages, mock `pushToUser` calls, webhook subagent job data, and `/admin/api/ebrain/stats` JSON.
 - Full runtime artifact evidence from the 9-step path is not available on this workstation because Docker is not running. The script and compose file are present and validated; a host with Docker daemon access should run `bun run ebrain:e2e` to produce the required Postgres-backed artifact evidence.
-- The test guards external network by allowing only localhost fetches. Fixture import uses local JSON files and `noEmbed: true`; brief generation uses the existing E2 stub; webhook subagent execution is captured through a mock `submitJob` and never calls a real LLM.
-- No schema migrations, dependencies, gbrain core, MCP, CLI command, admin, skills, deploy, or `src/ebrain/*` business-code changes were made.
+- The test guards external network by allowing only localhost fetches. Mock connectors read local JSON fixtures and call the production enterprise upsert path; brief generation uses the deterministic E2 mock in this test; webhook subagent execution is captured through a mock `submitJob` and never calls a real LLM.
+- No schema migrations, dependencies, gbrain core, MCP, CLI command, admin, skills, deploy, or `src/ebrain/apps/*` changes were made.
 
 ## Files Changed
 
@@ -2643,6 +2654,8 @@ STAGE-SUMMARY.md
 docker-compose.ebrain-test.yml
 package.json
 scripts/run-e2e-ebrain.sh
+src/ebrain/jobs/executive-brief.ts
 tests/e2e/ebrain-full-flow.test.ts
+tests/e2e/helpers/mock-connectors.ts
 STAGE-SUMMARY.md
 ```

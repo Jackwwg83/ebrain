@@ -51,6 +51,7 @@ type GenerateBriefFn = typeof generateExecutiveBriefStub;
 interface ExecutiveBriefDeps {
   pushMorningBrief?: PushMorningBriefFn;
   generateBrief?: GenerateBriefFn;
+  generatorStage?: string;
 }
 
 let depsForTest: ExecutiveBriefDeps | null = null;
@@ -63,6 +64,7 @@ function deps(): Required<ExecutiveBriefDeps> {
   return {
     pushMorningBrief: depsForTest?.pushMorningBrief ?? pushMorningBrief,
     generateBrief: depsForTest?.generateBrief ?? generateExecutiveBriefStub,
+    generatorStage: depsForTest?.generatorStage ?? 'E2_stub',
   };
 }
 
@@ -281,6 +283,7 @@ async function writeBriefPage(
   timezone: string,
   localDate: string,
   briefMarkdown: string,
+  generatorStage: string,
 ): Promise<{ briefSlug: string; briefPath: string }> {
   const briefSlug = briefSlugFor(localDate, profile.executiveId);
   await ctx.engine.putPage(briefSlug, {
@@ -293,7 +296,7 @@ async function writeBriefPage(
       generated_at: dateUtc.toISOString(),
       brief_date: localDate,
       timezone,
-      generator_stage: 'E2_stub',
+      generator_stage: generatorStage,
       dream_generated: true,
     },
   }, { sourceId: ctx.sourceId ?? 'enterprise' });
@@ -391,10 +394,18 @@ export async function runExecutiveBrief(
     return { pushed: false, skipped: 'before_scheduled_time', nextEligibleAt };
   }
 
-  const { generateBrief } = deps();
+  const { generateBrief, generatorStage } = deps();
   const localDate = formatDateInTimezone(dateUtc, timezone);
   const briefMarkdown = generateBrief(profile, dateUtc, { logger: ctx.logger });
-  const { briefPath, briefSlug } = await writeBriefPage(ctx, profile, dateUtc, timezone, localDate, briefMarkdown);
+  const { briefPath, briefSlug } = await writeBriefPage(
+    ctx,
+    profile,
+    dateUtc,
+    timezone,
+    localDate,
+    briefMarkdown,
+    generatorStage,
+  );
   const push = await pushWithRetry(ctx, profile.executiveId, briefMarkdown);
 
   if (push.failedPermanently) {

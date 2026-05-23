@@ -1,6 +1,5 @@
 import { afterAll, beforeAll, describe, expect, setDefaultTimeout, test } from 'bun:test';
 import type { Subprocess } from 'bun';
-import { createHash } from 'node:crypto';
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer as createTcpServer } from 'node:net';
 import { tmpdir } from 'node:os';
@@ -8,13 +7,6 @@ import { join } from 'node:path';
 import { PostgresEngine } from '../../src/core/postgres-engine.ts';
 import { LATEST_VERSION } from '../../src/core/migrate.ts';
 import { importFromContent } from '../../src/core/import-file.ts';
-import {
-  renderFactsTable,
-  type FactKind,
-  type FactNotability,
-  type FactVisibility,
-  type ParsedFact,
-} from '../../src/core/facts-fence.ts';
 import type { OperationContext } from '../../src/core/operations.ts';
 import { EBRAIN_SOURCE_ID } from '../../src/ebrain/constants.ts';
 import { createExecutive } from '../../src/ebrain/executives/create.ts';
@@ -39,6 +31,11 @@ import type {
   PushContent,
   Reply,
 } from '../../src/ebrain/apps/base/index.ts';
+import {
+  createMockConnectors,
+  type FixtureEntity,
+  type MockConnectorFixture,
+} from './helpers/mock-connectors.ts';
 
 setDefaultTimeout(180_000);
 
@@ -46,52 +43,6 @@ const DATABASE_URL = process.env.DATABASE_URL;
 const describeE2E = DATABASE_URL ? describe : describe.skip;
 const REPO = new URL('../..', import.meta.url).pathname.replace(/\/$/, '');
 const ADMIN_BOOTSTRAP_TOKEN = 'K2AdminBootstrapToken0123456789abcdef';
-
-type AppType = 'feishu' | 'dingtalk' | 'wecom' | 'tencent-meeting' | 'crm-custom';
-
-interface FixtureFile {
-  appId: string;
-  appType: AppType;
-  appName: string;
-  connector: string;
-  sourceId: string;
-  objectType: string;
-  path: string;
-  adapterStatus: 'wired-app-adapter' | 'fixture-db-only';
-}
-
-interface FixtureEntity {
-  slug: string;
-  type: 'company' | 'person' | 'deal' | 'project';
-  title: string;
-  aliases?: string[];
-}
-
-interface FixtureFact {
-  claim?: string;
-  kind?: string;
-  confidence?: number;
-  visibility?: string;
-  notability?: string;
-  validFrom?: string;
-  validUntil?: string;
-  source?: string;
-  context?: string;
-  claimMetric?: string;
-  claimValue?: number;
-  claimUnit?: string;
-  claimPeriod?: string;
-}
-
-interface NormalizedFixtureRecord {
-  externalId: string;
-  title: string;
-  modifiedTime: string;
-  bodyMarkdown: string;
-  entity: FixtureEntity;
-  facts: FixtureFact[];
-  raw: unknown;
-}
 
 interface PushCall {
   userId: string;
@@ -109,56 +60,61 @@ interface ServeProc {
 
 const EXECUTIVE_IDS = ['ceo', 'cfo', 'coo', 'cto', 'cpo'] as const;
 
-const K2_FIXTURE_FILES: FixtureFile[] = [
+const K2_FIXTURE_FILES: MockConnectorFixture[] = [
   {
     appId: 'k2-feishu',
     appType: 'feishu',
+    sourceType: 'feishu',
     appName: 'K2 Feishu Mock App',
     connector: 'docs',
     sourceId: 'k2-feishu-docs',
     objectType: 'doc',
     path: 'src/ebrain/apps/feishu/fixtures/docs-list.json',
-    adapterStatus: 'fixture-db-only',
+    adapterStatus: 'mock-connector-adapter',
   },
   {
     appId: 'k2-dingtalk',
     appType: 'dingtalk',
+    sourceType: 'dingtalk',
     appName: 'K2 DingTalk Mock App',
     connector: 'im',
     sourceId: 'k2-dingtalk-im',
     objectType: 'im-message',
     path: 'src/ebrain/apps/dingtalk/fixtures/im-messages.json',
-    adapterStatus: 'wired-app-adapter',
+    adapterStatus: 'mock-connector-adapter',
   },
   {
     appId: 'k2-wecom',
     appType: 'wecom',
+    sourceType: 'wecom',
     appName: 'K2 WeCom Mock App',
     connector: 'messages',
     sourceId: 'k2-wecom-messages',
     objectType: 'im-message',
     path: 'src/ebrain/apps/wecom/fixtures/messages.json',
-    adapterStatus: 'fixture-db-only',
+    adapterStatus: 'mock-connector-adapter',
   },
   {
     appId: 'k2-tencent-meeting',
     appType: 'tencent-meeting',
+    sourceType: 'tencent-meeting',
     appName: 'K2 Tencent Meeting Mock App',
     connector: 'transcripts',
     sourceId: 'k2-tencent-transcripts',
     objectType: 'meeting-transcript',
     path: 'src/ebrain/apps/tencent-meeting/fixtures/transcripts.json',
-    adapterStatus: 'fixture-db-only',
+    adapterStatus: 'mock-connector-adapter',
   },
   {
     appId: 'k2-crm',
-    appType: 'crm-custom',
+    appType: 'crm-shenxiao',
+    sourceType: 'crm-shenxiao',
     appName: 'K2 CRM Mock App',
     connector: 'accounts',
     sourceId: 'k2-crm-accounts',
-    objectType: 'account',
+    objectType: 'crm-account',
     path: 'src/ebrain/apps/crm/fixtures/accounts.json',
-    adapterStatus: 'fixture-db-only',
+    adapterStatus: 'mock-connector-adapter',
   },
 ];
 
@@ -247,31 +203,65 @@ describeE2E('Ebrain K2 Postgres full flow', () => {
         GROUP BY a.app_type
         ORDER BY a.app_type`,
     );
-    expect(appCoverage.map(row => row.app_type)).toEqual(['crm-custom', 'dingtalk', 'feishu', 'tencent-meeting', 'wecom']);
+    expect(appCoverage.map(row => row.app_type)).toEqual(['crm-shenxiao', 'dingtalk', 'feishu', 'tencent-meeting', 'wecom']);
     expect(appCoverage.every(row => row.app_count === '1' && row.token_count === '1')).toBe(true);
 
-    // 5. sync 5 connector fixture sets through the K1 import-file shape.
-    const importedSlugs: string[] = [];
+    // 5. sync 5 connector fixture sets through hermetic EnterpriseConnector.runIncremental adapters.
     const entitySlugs = new Map<string, FixtureEntity>();
     let recordsImported = 0;
-    for (const fixture of K2_FIXTURE_FILES) {
-      await seedEnterpriseIngestSource(fixture);
-      const records = await loadFixtureRecords(fixture);
-      expect(records.length, `${fixture.sourceId} should have fixture records`).toBeGreaterThan(0);
-      for (let i = 0; i < records.length; i++) {
-        const normalized = normalizeFixtureRecord(fixture, records[i], i);
-        entitySlugs.set(normalized.entity.slug, normalized.entity);
-        importedSlugs.push(await importFixtureRecord(fixture, normalized));
-        recordsImported += 1;
-      }
+    const connectorRuntime = makeConnectorApps(K2_FIXTURE_FILES);
+    const mockConnectors = createMockConnectors(connectorRuntime.apps, K2_FIXTURE_FILES);
+    expect(mockConnectors).toHaveLength(5);
+
+    for (const connector of mockConnectors) {
+      const result = await connector.runIncremental(ctx);
+      expect(result.objectsIngested, `${connector.name} objectsIngested`).toBeGreaterThan(0);
+      expect(result.objectsSkipped, `${connector.name} objectsSkipped`).toBe(0);
+      expect(result.errors, `${connector.name} errors`).toBe(0);
+      expect(result.cursorAdvanced, `${connector.name} cursorAdvanced`).toBeDefined();
+      recordsImported += result.objectsIngested;
+      for (const entity of connector.entities()) entitySlugs.set(entity.slug, entity);
     }
     for (const entity of entitySlugs.values()) {
       await importEntityPage(entity);
     }
+    expect(connectorRuntime.tokenReads).toHaveLength(5);
+    expect(connectorRuntime.rateLimitAcquires).toHaveLength(5);
     expect(recordsImported).toBeGreaterThanOrEqual(5);
     expect(await countRows('enterprise_ingest_sources')).toBe(5);
     expect(await countRows('enterprise_ingest_objects')).toBe(recordsImported);
-    expect(await countRows('pages', `source_id = '${EBRAIN_SOURCE_ID}' AND slug LIKE 'k2-fixtures/%'`)).toBe(recordsImported);
+    const sourceRows = await engine.executeRaw<{
+      ingest_source_id: string;
+      cursor_state: unknown;
+      last_success_at: string | null;
+    }>(
+      `SELECT ingest_source_id, cursor_state, last_success_at
+         FROM enterprise_ingest_sources
+        ORDER BY ingest_source_id`,
+    );
+    expect(sourceRows).toHaveLength(5);
+    for (const row of sourceRows) {
+      const cursor = jsonRecord(row.cursor_state);
+      expect(row.last_success_at, `${row.ingest_source_id} last_success_at`).toBeTruthy();
+      expect(cursor.connector, `${row.ingest_source_id} cursor connector`).toBeTruthy();
+      expect(cursor.records_seen, `${row.ingest_source_id} cursor records_seen`).toBeGreaterThan(0);
+    }
+    const objectRows = await engine.executeRaw<{
+      page_slug: string | null;
+      compiled_truth: string;
+      enterprise_source_type: string | null;
+    }>(
+      `SELECT o.page_slug, p.compiled_truth, p.enterprise_source_type
+         FROM enterprise_ingest_objects o
+         JOIN pages p ON p.source_id = $1 AND p.slug = o.page_slug
+        ORDER BY o.ingest_source_id, o.external_id`,
+      [EBRAIN_SOURCE_ID],
+    );
+    expect(objectRows).toHaveLength(recordsImported);
+    expect(objectRows.every(row => row.page_slug && !row.page_slug.startsWith('k2-fixtures/'))).toBe(true);
+    expect(objectRows.every(row => row.compiled_truth.includes('transform_path: mock-enterprise-connector'))).toBe(true);
+    expect(objectRows.some(row => row.compiled_truth.includes('monthly recurring revenue of 50000 USD'))).toBe(true);
+    expect(objectRows.some(row => row.compiled_truth.includes('monthly recurring revenue of 62000 USD'))).toBe(true);
 
     // 6. run F2 enterprise-cycle directly: parent fan-out plus all 8 child shards and 6 phases.
     const cycleResult = await runEnterpriseCycleForAllShards();
@@ -311,9 +301,26 @@ describeE2E('Ebrain K2 Postgres full flow', () => {
     expect((webhookSubmissions[0].job.data.ctx as { remote?: boolean }).remote).toBe(true);
     expect(webhookSubmissions[0].opts).toEqual({ allowProtectedSubmit: true });
 
-    // 8. generate/push briefs with a mock BotAdapter and inspect pushToUser calls.
+    // 8. generate/push briefs with a deterministic generateBrief mock and inspect pushToUser calls.
     const { apps, pushCalls } = makePushApps();
+    const openConflictCount = await countRows('enterprise_fact_conflicts', `status = 'open'`);
+    const briefBodies: Record<string, string> = {};
     _setExecutiveBriefDepsForTest({
+      generatorStage: 'E2_mock',
+      generateBrief(profile, dateUtc) {
+        const body = [
+          `## Mock Brief for ${profile.executiveId} on ${dateUtc.toISOString().slice(0, 10)}`,
+          '',
+          `executive_id: ${profile.executiveId}`,
+          `cycle_changed_pages: ${cycleResult.totals.changedPages}`,
+          `facts_inserted: ${cycleResult.totals.factsInserted}`,
+          `open_conflict_count: ${openConflictCount}`,
+          'conflict_token: Acme Example mrr conflict',
+          'generator_stage: E2_mock',
+        ].join('\n');
+        briefBodies[profile.executiveId] = body;
+        return body;
+      },
       async pushMorningBrief(briefEngine, executiveId, content) {
         return pushMorningBrief(briefEngine, executiveId, content, { apps });
       },
@@ -325,10 +332,32 @@ describeE2E('Ebrain K2 Postgres full flow', () => {
       });
       expect(result.pushed, executiveId).toBe(true);
       expect(result.briefSlug).toBe(`briefs/daily/2026-05-22-${executiveId}`);
+      expect(briefBodies[executiveId]).toContain(`executive_id: ${executiveId}`);
+      expect(briefBodies[executiveId]).toContain(`open_conflict_count: ${openConflictCount}`);
+      expect(briefBodies[executiveId]).toContain('cycle_changed_pages:');
+      expect(briefBodies[executiveId]).toContain('conflict_token: Acme Example mrr conflict');
     }
     expect(pushCalls).toHaveLength(5);
     expect(pushCalls.map(call => call.userId).sort()).toEqual(['dt-user-1', 'dt-user-2', 'dt-user-3', 'dt-user-4', 'dt-user-5']);
+    expect(pushCalls.every(call => call.bodyMarkdown.includes('generator_stage: E2_mock'))).toBe(true);
     expect(await countRows('pages', `source_id = '${EBRAIN_SOURCE_ID}' AND slug LIKE 'briefs/daily/2026-05-22-%'`)).toBe(5);
+    const briefRows = await engine.executeRaw<{
+      slug: string;
+      compiled_truth: string;
+      frontmatter: unknown;
+    }>(
+      `SELECT slug, compiled_truth, frontmatter
+         FROM pages
+        WHERE source_id = $1 AND slug LIKE 'briefs/daily/2026-05-22-%'
+        ORDER BY slug`,
+      [EBRAIN_SOURCE_ID],
+    );
+    expect(briefRows).toHaveLength(5);
+    for (const row of briefRows) {
+      const frontmatter = jsonRecord(row.frontmatter);
+      expect(frontmatter.generator_stage, row.slug).toBe('E2_mock');
+      expect(row.compiled_truth, row.slug).toContain('generator_stage: E2_mock');
+    }
 
     // 9. call the real H1 admin dashboard stats endpoint and inspect its payload.
     server = await startAdminServer();
@@ -380,6 +409,69 @@ function makeCtx(pg: PostgresEngine): OperationContext {
   } as OperationContext;
 }
 
+function makeConnectorApps(fixtures: readonly MockConnectorFixture[]): {
+  apps: Map<string, EnterpriseApp>;
+  tokenReads: string[];
+  rateLimitAcquires: string[];
+} {
+  const tokenReads: string[] = [];
+  const rateLimitAcquires: string[] = [];
+  const apps = new Map<string, EnterpriseApp>();
+
+  for (const fixture of fixtures) {
+    const app: EnterpriseApp = {
+      appId: fixture.appId,
+      appType: fixture.appType,
+      displayName: fixture.appName,
+      enabled: true,
+      botEnabled: true,
+      pushEnabled: true,
+      consecutiveErrors: 0,
+      tokenManager: {
+        async getToken(kind, scope) {
+          tokenReads.push(`${fixture.appId}:${kind}:${scope ?? 'default'}`);
+          const rows = await engine.executeRaw<{ access_token: string }>(
+            `SELECT access_token
+               FROM enterprise_oauth_tokens
+              WHERE app_id = $1 AND token_kind = $2 AND scope_key = $3
+                AND expires_at > now()`,
+            [fixture.appId, kind, scope ?? 'tenant:k2'],
+          );
+          if (!rows[0]?.access_token) throw new Error(`missing mock OAuth token for ${fixture.appId}`);
+          return rows[0].access_token;
+        },
+        async refresh(kind, scope) {
+          tokenReads.push(`${fixture.appId}:${kind}:${scope ?? 'default'}:refresh`);
+          const rows = await engine.executeRaw<{ access_token: string }>(
+            `SELECT access_token
+               FROM enterprise_oauth_tokens
+              WHERE app_id = $1 AND token_kind = $2 AND scope_key = $3
+                AND expires_at > now()`,
+            [fixture.appId, kind, scope ?? 'tenant:k2'],
+          );
+          const accessToken = rows[0]?.access_token ?? `mock-access-token-${fixture.appId}`;
+          return { accessToken, expiresAt: new Date(Date.now() + 3600_000) };
+        },
+        async isExpired() {
+          return false;
+        },
+      },
+      rateLimiter: {
+        async acquire(keys) {
+          rateLimitAcquires.push(keys.map(key => `${key.tier}:${key.key}`).join(','));
+        },
+        release() {},
+      },
+      webhookHandler: { async verify() { return true; }, async decode() { throw new Error('unused'); } },
+      botAdapter: makeNoopBotAdapter(),
+      subConnectors: [],
+    };
+    apps.set(fixture.appId, app);
+  }
+
+  return { apps, tokenReads, rateLimitAcquires };
+}
+
 function expectedDatabaseName(): string {
   if (!DATABASE_URL) return 'ebrain_e2e';
   try {
@@ -391,6 +483,7 @@ function expectedDatabaseName(): string {
 }
 
 async function resetDatabase(): Promise<void> {
+  assertTestDatabase(process.env.DATABASE_URL!);
   await engine.executeRaw(
     `TRUNCATE enterprise_oauth_tokens,
               enterprise_ingest_objects,
@@ -420,6 +513,30 @@ async function resetDatabase(): Promise<void> {
   );
 }
 
+function assertTestDatabase(databaseUrl: string): void {
+  if (!databaseUrl) throw new Error('K2 e2e refused: DATABASE_URL is required before resetDatabase()');
+  const url = new URL(databaseUrl);
+  const dbName = url.pathname.replace(/^\//, '');
+  const host = url.hostname;
+  const allowedDbPattern = /^(ebrain_e2e|gbrain_test|.*_test|.*test_db)$/;
+  const allowedHosts = new Set(['localhost', '127.0.0.1', 'postgres', 'ebrain-test-pg']);
+  const allowDestructive = process.env.EBRAIN_E2E_ALLOW_DESTRUCTIVE === '1';
+
+  if (!allowedDbPattern.test(dbName) && !allowDestructive) {
+    throw new Error(
+      `K2 e2e refused: DATABASE_URL '${databaseUrl}' db_name='${dbName}' not in test pattern. ` +
+      'Set EBRAIN_E2E_ALLOW_DESTRUCTIVE=1 to override (you accept TRUNCATE risk).',
+    );
+  }
+
+  if (!allowedHosts.has(host) && !allowDestructive) {
+    throw new Error(
+      `K2 e2e refused: DATABASE_URL host='${host}' not in allowed localhost set. ` +
+      'Set EBRAIN_E2E_ALLOW_DESTRUCTIVE=1 to override.',
+    );
+  }
+}
+
 async function expectTables(tables: string[]): Promise<void> {
   const rows = await engine.executeRaw<{ table_name: string }>(
     `SELECT table_name
@@ -432,7 +549,7 @@ async function expectTables(tables: string[]): Promise<void> {
   expect(rows.map(row => row.table_name)).toEqual([...tables].sort());
 }
 
-async function seedEnterpriseApp(fixture: FixtureFile): Promise<void> {
+async function seedEnterpriseApp(fixture: MockConnectorFixture): Promise<void> {
   await engine.executeRaw(
     `INSERT INTO enterprise_apps (
        app_id,
@@ -460,7 +577,7 @@ async function seedEnterpriseApp(fixture: FixtureFile): Promise<void> {
   );
 }
 
-async function seedMockOauthToken(fixture: FixtureFile): Promise<void> {
+async function seedMockOauthToken(fixture: MockConnectorFixture): Promise<void> {
   await engine.executeRaw(
     `INSERT INTO enterprise_oauth_tokens (
        app_id,
@@ -480,215 +597,6 @@ async function seedMockOauthToken(fixture: FixtureFile): Promise<void> {
       JSON.stringify({ mocked: true, vendor_oauth_called: false }),
     ],
   );
-}
-
-async function seedEnterpriseIngestSource(fixture: FixtureFile): Promise<void> {
-  await engine.executeRaw(
-    `INSERT INTO enterprise_ingest_sources (
-       ingest_source_id,
-       parent_app_id,
-       ingest_source_type,
-       display_name,
-       connector_config,
-       last_success_at
-     ) VALUES ($1, $2, $3, $4, $5::jsonb, now())`,
-    [
-      fixture.sourceId,
-      fixture.appId,
-      fixture.appType,
-      `${fixture.appName} ${fixture.connector}`,
-      JSON.stringify({
-        connector: fixture.connector,
-        fixture_path: fixture.path,
-        adapter_status: fixture.adapterStatus,
-      }),
-    ],
-  );
-}
-
-async function loadFixtureRecords(fixture: FixtureFile): Promise<unknown[]> {
-  const payload = await Bun.file(join(process.cwd(), fixture.path)).json();
-  if (Array.isArray(payload)) return payload;
-  if (payload && typeof payload === 'object') {
-    const record = payload as Record<string, unknown>;
-    for (const key of ['items', 'records', 'messages', 'docs', 'events', 'files', 'meetings']) {
-      if (Array.isArray(record[key])) return record[key] as unknown[];
-    }
-  }
-  throw new Error(`Fixture ${fixture.path} must be a JSON array or object with an array payload`);
-}
-
-function normalizeFixtureRecord(fixture: FixtureFile, raw: unknown, index: number): NormalizedFixtureRecord {
-  const record = isRecord(raw) ? raw : {};
-  const externalId = firstString(record, ['id', 'externalId', 'messageId', 'docId', 'fileId', 'eventId', 'meetingId', 'approvalId'])
-    ?? `${fixture.sourceId}-${index + 1}`;
-  const title = firstString(record, ['title', 'summary', 'name', 'subject'])
-    ?? `${fixture.sourceId} fixture ${index + 1}`;
-  const modifiedTime = firstString(record, ['modifiedTime', 'updatedAt', 'createTime', 'startTime'])
-    ?? '2026-05-22T00:00:00.000Z';
-  const bodyMarkdown = firstString(record, ['bodyMarkdown', 'markdown', 'text', 'description', 'transcriptMarkdown'])
-    ?? `Synthetic ${fixture.sourceId} fixture record.`;
-  const entity = normalizeEntity(record.entity);
-  const baseFacts = Array.isArray(record.facts)
-    ? record.facts.filter(isRecord) as FixtureFact[]
-    : [defaultFact(fixture, title, entity, index)];
-  const facts = [...baseFacts, ...k2ConflictFacts(fixture, entity, index)];
-  return { externalId, title, modifiedTime, bodyMarkdown, entity, facts, raw };
-}
-
-function normalizeEntity(value: unknown): FixtureEntity {
-  if (!isRecord(value)) {
-    return {
-      slug: 'companies/acme-example',
-      type: 'company',
-      title: 'Acme Example',
-      aliases: ['Acme Example', 'Acme'],
-    };
-  }
-  const slug = typeof value.slug === 'string' && value.slug.trim() ? value.slug : 'companies/acme-example';
-  const type = ['company', 'person', 'deal', 'project'].includes(String(value.type))
-    ? value.type as FixtureEntity['type']
-    : 'company';
-  const title = typeof value.title === 'string' && value.title.trim() ? value.title : titleFromSlug(slug);
-  const aliases = Array.isArray(value.aliases)
-    ? value.aliases.filter((alias): alias is string => typeof alias === 'string')
-    : undefined;
-  return { slug, type, title, aliases };
-}
-
-function defaultFact(fixture: FixtureFile, title: string, entity: FixtureEntity, index: number): FixtureFact {
-  return {
-    claim: `${entity.title} fixture ${title} was imported from ${fixture.sourceId}.`,
-    kind: index % 3 === 0 ? 'event' : 'fact',
-    confidence: 0.9,
-    visibility: 'world',
-    notability: 'medium',
-    validFrom: '2026-05-22',
-    source: fixture.sourceId,
-  };
-}
-
-function k2ConflictFacts(fixture: FixtureFile, entity: FixtureEntity, index: number): FixtureFact[] {
-  if (entity.slug !== 'companies/acme-example' || index !== 0) return [];
-  if (fixture.appType === 'feishu') {
-    return [{
-      claim: 'Acme Example K2 fixture reports monthly recurring revenue of 50000 USD from Feishu docs.',
-      kind: 'fact',
-      confidence: 0.88,
-      visibility: 'world',
-      notability: 'high',
-      validFrom: '2026-05-22',
-      source: fixture.sourceId,
-      claimMetric: 'mrr',
-      claimValue: 50000,
-      claimUnit: 'USD',
-      claimPeriod: 'monthly',
-    }];
-  }
-  if (fixture.appType === 'crm-custom') {
-    return [{
-      claim: 'Acme Example K2 fixture reports monthly recurring revenue of 62000 USD from CRM accounts.',
-      kind: 'fact',
-      confidence: 0.9,
-      visibility: 'world',
-      notability: 'high',
-      validFrom: '2026-05-22',
-      source: fixture.sourceId,
-      claimMetric: 'mrr',
-      claimValue: 62000,
-      claimUnit: 'USD',
-      claimPeriod: 'monthly',
-    }];
-  }
-  return [];
-}
-
-async function importFixtureRecord(fixture: FixtureFile, record: NormalizedFixtureRecord): Promise<string> {
-  const slug = `k2-fixtures/${fixture.appType}/${fixture.connector}/${slugSegment(record.externalId)}`;
-  const enterpriseRef = `source=${encodeURIComponent(fixture.sourceId)};external=${encodeURIComponent(record.externalId)}`;
-  const facts = record.facts.map((fact, index) => toParsedFact(fact, fixture, record, index));
-  const content = [
-    '---',
-    'type: note',
-    'tags:',
-    '  - ebrain-k2-e2e',
-    `app: ${fixture.appType}`,
-    `connector: ${fixture.connector}`,
-    `enterprise_source_ref: ${enterpriseRef}`,
-    '---',
-    '',
-    `# ${record.title}`,
-    '',
-    record.bodyMarkdown,
-    '',
-    '## Fixture Metadata',
-    '',
-    `- app: ${fixture.appType}`,
-    `- connector: ${fixture.connector}`,
-    `- source_id: ${fixture.sourceId}`,
-    `- external_id: ${record.externalId}`,
-    `- fixture_path: ${fixture.path}`,
-    `- adapter_status: ${fixture.adapterStatus}`,
-    '',
-    '## Facts',
-    '',
-    renderFactsTable(facts),
-    '',
-  ].join('\n');
-
-  const result = await importFromContent(engine, slug, content, {
-    noEmbed: true,
-    sourceId: EBRAIN_SOURCE_ID,
-    filename: `${record.externalId}.md`,
-  });
-  expect(result.status, `${fixture.sourceId}/${record.externalId}`).toBe('imported');
-
-  const contentHash = createHash('sha256').update(content).digest('hex');
-  await engine.executeRaw(
-    `UPDATE pages
-        SET enterprise_source_type = $1,
-            enterprise_source_ref = $2,
-            classification = 'L1',
-            provenance = $3::jsonb,
-            object_hash = $4,
-            last_ingested_at = now(),
-            updated_at = now()
-      WHERE source_id = $5 AND slug = $6`,
-    [
-      fixture.appType,
-      enterpriseRef,
-      JSON.stringify({ fixture_path: fixture.path, connector: fixture.connector, stage: 'K2' }),
-      contentHash,
-      EBRAIN_SOURCE_ID,
-      slug,
-    ],
-  );
-  await engine.executeRaw(
-    `INSERT INTO enterprise_ingest_objects (
-       ingest_source_id,
-       external_id,
-       object_type,
-       version_ref,
-       content_hash,
-       page_slug,
-       status,
-       raw_ref,
-       last_seen_at,
-       last_ingested_at,
-       metadata
-     ) VALUES ($1, $2, $3, $4, $5, $6, 'ingested', $7, now(), now(), $8::jsonb)`,
-    [
-      fixture.sourceId,
-      record.externalId,
-      fixture.objectType,
-      record.modifiedTime,
-      contentHash,
-      slug,
-      JSON.stringify(record.raw),
-      JSON.stringify({ fixture_path: fixture.path, app_type: fixture.appType, connector: fixture.connector }),
-    ],
-  );
-  return slug;
 }
 
 async function importEntityPage(entity: FixtureEntity): Promise<void> {
@@ -724,32 +632,6 @@ async function importEntityPage(entity: FixtureEntity): Promise<void> {
       WHERE source_id = $1 AND slug = $2`,
     [EBRAIN_SOURCE_ID, entity.slug],
   );
-}
-
-function toParsedFact(
-  fact: FixtureFact,
-  fixture: FixtureFile,
-  record: NormalizedFixtureRecord,
-  index: number,
-): ParsedFact {
-  const parsed: ParsedFact = {
-    rowNum: index + 1,
-    claim: fact.claim ?? `${record.entity.title} has fixture coverage in ${fixture.sourceId}.`,
-    kind: parseKind(fact.kind),
-    confidence: typeof fact.confidence === 'number' ? fact.confidence : 0.9,
-    visibility: parseVisibility(fact.visibility),
-    notability: parseNotability(fact.notability),
-    validFrom: fact.validFrom ?? '2026-05-22',
-    validUntil: fact.validUntil,
-    source: fact.source ?? fixture.sourceId,
-    context: fact.context ?? `fixture_path=${fixture.path}`,
-    active: true,
-  };
-  if (fact.claimMetric) parsed.claimMetric = fact.claimMetric;
-  if (typeof fact.claimValue === 'number') parsed.claimValue = fact.claimValue;
-  if (fact.claimUnit) parsed.claimUnit = fact.claimUnit;
-  if (fact.claimPeriod) parsed.claimPeriod = fact.claimPeriod;
-  return parsed;
 }
 
 async function runEnterpriseCycleForAllShards(): Promise<{
@@ -1055,45 +937,19 @@ async function countRows(table: string, where?: string): Promise<number> {
   return Number(rows[0]?.count ?? 0);
 }
 
+function jsonRecord(value: unknown): Record<string, unknown> {
+  if (isRecord(value)) return value;
+  if (typeof value === 'string' && value.trim()) {
+    const parsed = JSON.parse(value) as unknown;
+    if (isRecord(parsed)) return parsed;
+  }
+  return {};
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
-function firstString(record: Record<string, unknown>, keys: string[]): string | undefined {
-  for (const key of keys) {
-    const value = record[key];
-    if (typeof value === 'string' && value.trim()) return value;
-  }
-  return undefined;
-}
-
-function slugSegment(value: string): string {
-  return value
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9_-]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .replace(/-{2,}/g, '-') || createHash('sha256').update(value).digest('hex').slice(0, 12);
-}
-
-function titleFromSlug(slug: string): string {
-  return slug.split('/').pop()?.replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()) ?? 'K2 Fixture Entity';
-}
-
 function quoteYaml(value: string): string {
   return JSON.stringify(value);
-}
-
-function parseKind(value: string | undefined): FactKind {
-  return value === 'event' || value === 'preference' || value === 'commitment' || value === 'belief' || value === 'fact'
-    ? value
-    : 'fact';
-}
-
-function parseVisibility(value: string | undefined): FactVisibility {
-  return value === 'private' || value === 'world' ? value : 'world';
-}
-
-function parseNotability(value: string | undefined): FactNotability {
-  return value === 'high' || value === 'medium' || value === 'low' ? value : 'medium';
 }
