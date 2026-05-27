@@ -67,7 +67,7 @@ describe('G2 admin OAuth client export endpoint', () => {
     );
     const provider = new GBrainOAuthProvider({ sql: sqlQueryForEngine(engine) });
     const registered = await provider.registerClientManual(
-      'export-agent', ['client_credentials'], 'read write', [], 'default', undefined, 'ceo',
+      'export-agent', ['client_credentials'], 'read write', [], 'default', undefined, undefined, 'ceo',
     );
     clientId = registered.clientId;
     await engine.disconnect();

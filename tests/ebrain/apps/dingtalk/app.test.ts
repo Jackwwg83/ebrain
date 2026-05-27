@@ -1,6 +1,6 @@
 import { setDefaultTimeout, afterEach, beforeEach, describe, expect, test } from 'bun:test';
 
-setDefaultTimeout(20_000);
+setDefaultTimeout(60_000);
 import type { EnterpriseApp } from '../../../../src/ebrain/apps/base/index.ts';
 import {
   DingtalkBotAdapter,

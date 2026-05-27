@@ -184,7 +184,10 @@ describe('Ebrain OperationContext extensions', () => {
     expect(body).toEqual({ error: 'internal_error', message: 'loader boom' });
   });
 
-  test('loadExecutiveProfile stub returns null in A4 MVP runtime', async () => {
-    await expect(loadExecutiveProfile({} as BrainEngine, 'exec-1')).resolves.toBeNull();
+  test('loadExecutiveProfile returns null when the executive row is absent', async () => {
+    const engine = {
+      executeRaw: async () => [],
+    } as unknown as BrainEngine;
+    await expect(loadExecutiveProfile(engine, 'exec-1')).resolves.toBeNull();
   });
 });

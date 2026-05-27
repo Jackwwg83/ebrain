@@ -17,7 +17,7 @@ describe('G2 verifyAccessToken executive fields', () => {
       await seedExecutive(engine);
       const provider = new GBrainOAuthProvider({ sql: sqlQueryForEngine(engine) });
       const { clientId, clientSecret } = await provider.registerClientManual(
-        'agent', ['client_credentials'], 'read write', [], 'default', undefined, 'ceo',
+        'agent', ['client_credentials'], 'read write', [], 'default', undefined, undefined, 'ceo',
       );
       const token = await provider.exchangeClientCredentials(clientId, clientSecret, 'read');
       const authInfo = await provider.verifyAccessToken(token.access_token) as any;
@@ -52,7 +52,7 @@ describe('G2 verifyAccessToken executive fields', () => {
       await seedExecutive(engine);
       const provider = new GBrainOAuthProvider({ sql: sqlQueryForEngine(engine) });
       const { clientId, clientSecret } = await provider.registerClientManual(
-        'soft-delete-agent', ['client_credentials'], 'read', [], 'default', undefined, 'ceo',
+        'soft-delete-agent', ['client_credentials'], 'read', [], 'default', undefined, undefined, 'ceo',
       );
       await engine.executeRaw(`UPDATE executives SET deleted_at = now() WHERE executive_id = $1`, ['ceo']);
       const token = await provider.exchangeClientCredentials(clientId, clientSecret, 'read');

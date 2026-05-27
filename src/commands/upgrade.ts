@@ -241,6 +241,16 @@ export async function runPostUpgrade(args: string[] = []): Promise<void> {
     console.log('Idempotent — safe to re-run any time.');
     return;
   }
+
+  // v0.35.8.0: lay down ~/.gbrain/.gitignore retroactively. Existing users
+  // never re-run `gbrain init`, so init-only coverage misses them entirely
+  // (codex F-CDX-8). Idempotent + non-clobbering — safe to run every upgrade.
+  try {
+    const { ensureGitignore } = await import('../core/config.ts');
+    ensureGitignore();
+  } catch {
+    // Best-effort hygiene; never block upgrade.
+  }
   // Cosmetic: print feature pitches for migrations newer than the prior binary.
   try {
     const statePath = join(process.env.HOME || '', '.gbrain', 'upgrade-state.json');
@@ -399,6 +409,20 @@ export async function runPostUpgrade(args: string[] = []): Promise<void> {
   //     compare gbrain against itself)
   //   - every scaffolded skill is identical (nothing to say)
   await postUpgradeReferenceSweep();
+
+  // v0.41.18.0 (A4 + A18, T14): post-upgrade onboard banner. Fail-open;
+  // doesn't engine-connect (lightweight TTY check only). The actual
+  // recommendations need engine access via `gbrain onboard --check`;
+  // the banner just nudges the user to run it.
+  try {
+    const { runUpgradeBanner } = await import('../core/onboard/init-nudge.ts');
+    // The banner doesn't actually use the engine today; passing null-equivalent
+    // would require a type widening. Skip the engine arg and let the banner
+    // print the static nudge text.
+    await runUpgradeBanner(null as never);
+  } catch {
+    // Fail-open per A18: never crash post-upgrade from the banner.
+  }
 }
 
 /**

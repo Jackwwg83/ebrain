@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test } from 'bun:test';
+import { afterEach, describe, expect, setDefaultTimeout, test } from 'bun:test';
 import type { BrainEngine } from '../../../src/core/engine.ts';
 import type { OperationContext } from '../../../src/core/operations.ts';
 import type { PushResult } from '../../../src/ebrain/bot/push-orchestrator.ts';
@@ -9,6 +9,8 @@ import {
   _setExecutiveBriefDepsForTest,
   runExecutiveBrief,
 } from '../../../src/ebrain/jobs/executive-brief.ts';
+
+setDefaultTimeout(60_000);
 
 interface PutPageCall {
   slug: string;

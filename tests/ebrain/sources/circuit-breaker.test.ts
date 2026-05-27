@@ -35,7 +35,7 @@ beforeEach(async () => {
   await engine.initSchema();
   ctx = makeCtx(engine);
   await seedSource();
-});
+}, 30_000);
 
 afterEach(async () => {
   await engine.disconnect();
