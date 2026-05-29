@@ -48,6 +48,7 @@ ALLOWED=(
   "src/commands/capture.ts"                     # local CLI tool; not network-exposed
   "src/commands/book-mirror.ts"                 # local CLI tool; not network-exposed
   "src/commands/tools-json.ts"                  # gbrain --tools-json introspection; full op list IS the purpose
+  "src/ebrain/bot/router.ts"                    # ebrain IM bot; exposes only BOT_ALLOWED_OPS into remote subagent jobs
   "src/commands/serve-http.ts"                  # MUST APPLY .filter(op => !op.localOnly) — verified by grep below
 )
 

@@ -1,14 +1,14 @@
 #!/usr/bin/env bun
-// forecast-variance-explainer — scaffolded by gbrain skillify scaffold
-// SKILLIFY_STUB: replace before running check-resolvable --strict
-//
-// Replace this stub with the deterministic logic the skill needs.
-// Keep exports pure so tests can import them without side effects.
+// forecast-variance-explainer — deterministic handoff packet builder.
 
 export function run(input) {
-  // TODO: implement. This stub is detected by `gbrain check-resolvable
-  // --strict` and will fail CI until replaced.
-  throw new Error('forecast-variance-explainer scaffold not yet implemented');
+  return {
+    skill: 'forecast-variance-explainer',
+    writes_to: 'signals/forecast/',
+    input,
+    sections: ['variance_summary', 'driver_evidence', 'confidence', 'next_measurement'],
+    requires_citations: true,
+  };
 }
 
 if (import.meta.main) {

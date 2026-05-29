@@ -5075,7 +5075,6 @@ export const MIGRATIONS: Migration[] = [
   {
     version: 200,
     name: 'v200_ebrain_enterprise_baseline',
-    description: 'Ebrain MVP baseline: pages 16 fields + 6 enterprise tables + executives + view',
     idempotent: true,
     sql: '',
     sqlFor: {

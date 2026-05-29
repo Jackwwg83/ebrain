@@ -140,6 +140,54 @@
       "directory": "conversations/",
       "examples": ["conversations/chatgpt/{thread-slug}.md", "conversations/claude/{thread-slug}.md"],
       "description": "Imported chat exports (ChatGPT, Claude, etc.) where the conversation itself is the artifact. Cross-link concepts and people from the conversation; the conversation page is the source-of-truth for the dialog. Distinct from voice-notes/ (which holds raw voice capture)."
+    },
+    {
+      "kind": "enterprise-signal",
+      "directory": "signals/customer/",
+      "examples": ["customer escalation radar output"],
+      "description": "Enterprise customer escalation signals generated from CRM, support, IM, and conflict evidence."
+    },
+    {
+      "kind": "enterprise-signal",
+      "directory": "signals/risk/",
+      "examples": ["risk signal detector output"],
+      "description": "Enterprise risk signal syntheses for executive escalation."
+    },
+    {
+      "kind": "enterprise-signal",
+      "directory": "signals/forecast/",
+      "examples": ["forecast variance explanations"],
+      "description": "Enterprise forecast variance analysis and supporting evidence."
+    },
+    {
+      "kind": "enterprise-signal",
+      "directory": "signals/competitor/",
+      "examples": ["competitor move monitor output"],
+      "description": "Enterprise competitor movement signals with sourced evidence."
+    },
+    {
+      "kind": "enterprise-brief",
+      "directory": "briefs/daily/",
+      "examples": ["executive daily brief output"],
+      "description": "Daily executive briefs that combine risk, revenue, customer, and operational signals."
+    },
+    {
+      "kind": "enterprise-brief",
+      "directory": "briefs/board/",
+      "examples": ["board deck generator output"],
+      "description": "Board-level enterprise brief and deck source pages."
+    },
+    {
+      "kind": "enterprise-analysis",
+      "directory": "analysis/capital-allocation/",
+      "examples": ["capital allocation advisor output"],
+      "description": "Enterprise capital allocation analysis tied to finance and operational evidence."
+    },
+    {
+      "kind": "enterprise-synthesis",
+      "directory": "synthesis/org-memory/",
+      "examples": ["org memory synthesizer output"],
+      "description": "Enterprise organizational memory syntheses across meetings, docs, and team signals."
     }
   ],
   "sources_dir": {
