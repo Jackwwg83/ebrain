@@ -60,7 +60,7 @@ describe('executives CLI exit codes', () => {
       GBRAIN_HOME: home,
     };
 
-    const init = await runCli(['init', '--pglite'], env, brain, 120_000);
+    const init = await runCli(['init', '--pglite', '--no-embedding'], env, brain, 120_000);
     expect(init.exitCode).toBe(0);
 
     const create = await runCli([

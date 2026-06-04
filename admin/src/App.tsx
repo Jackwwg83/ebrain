@@ -4,6 +4,7 @@ import { DashboardPage } from './pages/Dashboard';
 import { AgentsPage } from './pages/Agents';
 import { RequestLogPage } from './pages/RequestLog';
 import { CalibrationPage } from './pages/Calibration';
+import { JobsWatchPage } from './pages/JobsWatch';
 import { api } from './api';
 import { I18nextProvider } from 'react-i18next';
 import { i18n } from './ebrain/i18n/react-i18next';
@@ -15,11 +16,11 @@ import { EbrainFactConflictsPage } from './ebrain/pages/FactConflicts';
 import { EbrainAgentsPage } from './ebrain/pages/Agents';
 import { EbrainRequestLogPage } from './ebrain/pages/RequestLog';
 
-type Page = 'login' | 'dashboard' | 'agents' | 'log' | 'calibration' | 'ebrain/dashboard' | 'ebrain/executives' | 'ebrain/enterprise-apps' | 'ebrain/ingestion' | 'ebrain/conflicts' | 'ebrain/agents' | 'ebrain/request-log';
+type Page = 'login' | 'dashboard' | 'agents' | 'log' | 'calibration' | 'jobs' | 'ebrain/dashboard' | 'ebrain/executives' | 'ebrain/enterprise-apps' | 'ebrain/ingestion' | 'ebrain/conflicts' | 'ebrain/agents' | 'ebrain/request-log';
 
 function getPage(): Page {
   const hash = window.location.hash.replace('#', '') || 'dashboard';
-  if (['login', 'dashboard', 'agents', 'log', 'calibration', 'ebrain/dashboard', 'ebrain/executives', 'ebrain/enterprise-apps', 'ebrain/ingestion', 'ebrain/conflicts', 'ebrain/agents', 'ebrain/request-log'].includes(hash)) return hash as Page;
+  if (['login', 'dashboard', 'agents', 'log', 'calibration', 'jobs', 'ebrain/dashboard', 'ebrain/executives', 'ebrain/enterprise-apps', 'ebrain/ingestion', 'ebrain/conflicts', 'ebrain/agents', 'ebrain/request-log'].includes(hash)) return hash as Page;
   return 'dashboard';
 }
 
@@ -66,6 +67,8 @@ export function App() {
              onClick={() => navigate('log')}>Request Log</a>
           <a className={`nav-item ${page === 'calibration' ? 'active' : ''}`}
              onClick={() => navigate('calibration')}>Calibration</a>
+          <a className={`nav-item ${page === 'jobs' ? 'active' : ''}`}
+             onClick={() => navigate('jobs')}>Jobs Watch</a>
           <a className={`nav-item ${page === 'ebrain/dashboard' ? 'active' : ''}`}
              onClick={() => navigate('ebrain/dashboard')}>Ebrain Dashboard</a>
           <a className={`nav-item ${page === 'ebrain/executives' ? 'active' : ''}`}
@@ -106,6 +109,7 @@ export function App() {
           {page === 'agents' && <AgentsPage />}
           {page === 'log' && <RequestLogPage />}
           {page === 'calibration' && <CalibrationPage />}
+          {page === 'jobs' && <JobsWatchPage />}
           {page === 'ebrain/dashboard' && <EbrainDashboardPage />}
           {page === 'ebrain/executives' && <EbrainExecutivesPage />}
           {page === 'ebrain/enterprise-apps' && <EbrainEnterpriseAppsPage />}

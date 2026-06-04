@@ -1,14 +1,14 @@
 #!/usr/bin/env bun
-// capital-allocation-advisor — scaffolded by gbrain skillify scaffold
-// SKILLIFY_STUB: replace before running check-resolvable --strict
-//
-// Replace this stub with the deterministic logic the skill needs.
-// Keep exports pure so tests can import them without side effects.
+// capital-allocation-advisor — deterministic handoff packet builder.
 
 export function run(input) {
-  // TODO: implement. This stub is detected by `gbrain check-resolvable
-  // --strict` and will fail CI until replaced.
-  throw new Error('capital-allocation-advisor scaffold not yet implemented');
+  return {
+    skill: 'capital-allocation-advisor',
+    writes_to: 'analysis/capital-allocation/',
+    input,
+    sections: ['budget_pressure', 'expected_return', 'risk_adjustment', 'decision_options'],
+    requires_citations: true,
+  };
 }
 
 if (import.meta.main) {

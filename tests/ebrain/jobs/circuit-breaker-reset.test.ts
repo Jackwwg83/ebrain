@@ -1,7 +1,9 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, setDefaultTimeout, test } from 'bun:test';
 import type { OperationContext } from '../../../src/core/operations.ts';
 import { runCircuitBreakerReset } from '../../../src/ebrain/jobs/circuit-breaker-reset.ts';
 import { withEngine } from '../executives/helpers.ts';
+
+setDefaultTimeout(60_000);
 
 function ctx(engine: any): OperationContext {
   return {

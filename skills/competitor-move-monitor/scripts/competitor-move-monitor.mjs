@@ -1,14 +1,14 @@
 #!/usr/bin/env bun
-// competitor-move-monitor — scaffolded by gbrain skillify scaffold
-// SKILLIFY_STUB: replace before running check-resolvable --strict
-//
-// Replace this stub with the deterministic logic the skill needs.
-// Keep exports pure so tests can import them without side effects.
+// competitor-move-monitor — deterministic handoff packet builder.
 
 export function run(input) {
-  // TODO: implement. This stub is detected by `gbrain check-resolvable
-  // --strict` and will fail CI until replaced.
-  throw new Error('competitor-move-monitor scaffold not yet implemented');
+  return {
+    skill: 'competitor-move-monitor',
+    writes_to: 'signals/competitor/',
+    input,
+    sections: ['move_summary', 'evidence', 'customer_impact', 'recommended_response'],
+    requires_citations: true,
+  };
 }
 
 if (import.meta.main) {

@@ -50,6 +50,8 @@ export const api = {
     apiFetch(`/admin/api/calibration/profile${holder ? `?holder=${encodeURIComponent(holder)}` : ''}`),
   calibrationChart: (type: string, holder?: string) =>
     apiFetchText(`/admin/api/calibration/charts/${encodeURIComponent(type)}${holder ? `?holder=${encodeURIComponent(holder)}` : ''}`),
+  // v0.41 D2 — live minion-jobs dashboard snapshot.
+  jobsWatch: () => apiFetch('/admin/api/jobs/watch'),
 };
 
 export type EbrainAppType = 'feishu' | 'dingtalk' | 'wecom' | 'salesforce' | 'feishu-meetings';

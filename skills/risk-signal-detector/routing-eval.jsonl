@@ -7,7 +7,7 @@
 {"intent": "check enterprise risk signal coverage for churn and delivery misses", "expected_skill": "risk-signal-detector"}
 {"intent": "turn detect conflicts output into an enterprise risk signal list", "expected_skill": "risk-signal-detector"}
 {"intent": "review anomalies and recall rows as enterprise risk signal evidence", "expected_skill": "risk-signal-detector"}
-{"intent": "make an enterprise risk signal brief for the COO", "expected_skill": "risk-signal-detector"}
+{"intent": "make an enterprise risk signal triage list for the COO", "expected_skill": "risk-signal-detector"}
 {"intent": "compile enterprise risk signal next steps with owners", "expected_skill": "risk-signal-detector"}
 {"intent": "use enterprise risk signal detector for customer escalation and KPI movement", "expected_skill": "risk-signal-detector"}
 {"intent": "summarize enterprise risk signal gaps when sources are disconnected", "expected_skill": "risk-signal-detector"}

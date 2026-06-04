@@ -34,6 +34,7 @@ export async function registerEbrainClient(
     params.redirectUris ?? [],
     params.sourceId ?? 'default',
     params.federatedRead,
+    undefined,
     executiveId,
   );
 }

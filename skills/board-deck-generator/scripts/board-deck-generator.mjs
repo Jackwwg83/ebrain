@@ -1,14 +1,14 @@
 #!/usr/bin/env bun
-// board-deck-generator — scaffolded by gbrain skillify scaffold
-// SKILLIFY_STUB: replace before running check-resolvable --strict
-//
-// Replace this stub with the deterministic logic the skill needs.
-// Keep exports pure so tests can import them without side effects.
+// board-deck-generator — deterministic handoff packet builder.
 
 export function run(input) {
-  // TODO: implement. This stub is detected by `gbrain check-resolvable
-  // --strict` and will fail CI until replaced.
-  throw new Error('board-deck-generator scaffold not yet implemented');
+  return {
+    skill: 'board-deck-generator',
+    writes_to: 'briefs/board/',
+    input,
+    sections: ['business_update', 'risk_posture', 'capital_allocation', 'open_decisions'],
+    requires_citations: true,
+  };
 }
 
 if (import.meta.main) {

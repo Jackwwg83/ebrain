@@ -219,6 +219,45 @@ tests/ebrain/webhook/.gitkeep                      |    1 +
 
 ## A2 Notes
 
+## Sync-0: Upstream gbrain v0.41.18.0 Merge
+
+## Status
+
+- Stage: Sync-0 upstream merge
+- Branch: `sync/v0.41.18`
+- Upstream baseline: `upstream/master` at `10816cba` (`v0.41.18.0: gbrain onboard`)
+- Merge commit: `52d5b7c2` before final verification fixes
+- Scope: merge upstream gbrain v0.41.18.0 while preserving ebrain `EnterpriseConnector` surface and the v200 enterprise schema baseline
+
+## Merge Notes
+
+- Upstream migrations through v103 were retained, and ebrain migration v200 remains the final enterprise baseline migration.
+- Ebrain enterprise schema surfaces were preserved in `src/core/pglite-schema.ts`, `src/core/migrate.ts`, `src/core/operations.ts`, OAuth executive binding, serve-http bridge/admin routes, admin API/UI, and enterprise skills.
+- Upstream security and activation changes were retained, including OAuth/client auth changes, admin route hardening, operations filtering, resolver health checks, and skill routing checks.
+- Post-merge verification fixes were limited to compatibility, test expectations, verifier coverage, and timeout metadata. No product-code workaround was made for the known full-suite migration-chain slowness.
+
+## Verification
+
+| Check | Result | Evidence |
+|---|---|---|
+| `bun run typecheck` | PASS | `tsc --noEmit` exited 0 |
+| `bun run verify` | PASS | 26 checks passed: `[verify-parallel] elapsed=13s \| pass=26 fail=0 \| all checks green` |
+| Verify runner fallback | FIXED | macOS no-`timeout` fallback now preserves each child check exit code before killing the guard process; this removed false `rc=143` aggregation |
+| Helm Aliyun render | PASS | `helm template ebrain deploy/ebrain-helm-chart/ -f deploy/ebrain-helm-chart/values.aliyun.yaml > /dev/null && echo "aliyun OK"` |
+| Helm AWS render | PASS | `helm template ebrain deploy/ebrain-helm-chart/ -f deploy/ebrain-helm-chart/values.aws.yaml > /dev/null && echo "aws OK"` |
+| `bun test test/oauth.test.ts` | PASS | 91 tests, 0 fail |
+| `bun test test/http-transport.test.ts` | PASS | 28 tests, 0 fail |
+| `bun test test/migrate.test.ts` | PASS | 152 tests, 0 fail; migration chain applies through v103 then v200 |
+| `bun test tests/ebrain/conflicts/ tests/ebrain/executives/ tests/ebrain/ops/` | PASS | 42 tests, 0 fail |
+| `bun test tests/ebrain/sso/ tests/ebrain/oauth/` | PASS | 18 tests, 0 fail when run with localhost binding allowed; sandbox-only run failed `serve-http-export.test.ts` with `EPERM` on `127.0.0.1:0` |
+| `bun test tests/ebrain/jobs/ tests/ebrain/cycle/` | PASS | 32 tests, 0 fail |
+| `bun test tests/ebrain/apps/` | PASS | 41 tests, 0 fail |
+| `bun run ebrain:smoke` | PASS | 1 test, 0 fail; `[ebrain:smoke] PASS: fixtures imported, facts extracted, aliases refreshed` |
+
+## Known Follow-Up
+
+- Full `bun test tests/ebrain/` remains intentionally out of the Sync-0 gate. The merged migration chain now applies 99 migrations per fresh PGLite test database (upstream v103 plus ebrain v200), making the full ebrain suite slow enough to time out under this runner. Business-logic validation passed in PM-approved batches; migration-chain optimization is deferred to Sync-3.
+
 - A2 must wait for PM's Round 7 validation against gbrain `v0.36.3.0`.
 - A2 should use current upstream schema state: `package.json` version `0.36.3.0`, current schema migration version `74`, and Ebrain v200 still reserved as the enterprise namespace.
 - A2 should re-check any source line references imported from the v0.35.7 validation reports before editing migration code.
