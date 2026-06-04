@@ -2798,6 +2798,33 @@ STAGE-SUMMARY.md
 - Vendor API traffic is intentionally not exercised in Sync-1a; `pollOnce` is subclass-owned and remains mocked for this base-class stage.
 - No `src/core/*`, `src/mcp/*`, schema migration, dependency, or vendor connector changes were made.
 
+## Fixwave R1
+
+- Baseline: `5834ac01`; review artifact `/Users/jackwu/Projects/EBRAIN_SYNC1A_REVIEW.md` reported `C=0 H=0 M=3 L=1`. PM decision: fix Medium before Sync-1b.
+- M-001: moved `refreshTokenIfNeeded()` before poll rate-limit acquisition so slow OAuth refresh does not hold the poll lease. Line-order evidence: `refreshTokenIfNeeded` at line 224, `rateLimiter.acquire` at line 229.
+- M-002: added constructor validation for `pollIntervalMs`; non-finite, zero, and negative intervals now throw before any `setInterval` can tight-loop. Default remains `60_000`.
+- M-003: replaced boolean in-flight tracking with `inFlightPoll` promise tracking plus `stopping`; `stop()` clears the timer, prevents newly-triggered polls from entering, exits polls that have not reached `pollOnce`, and drains an active `pollOnce` with a default 30s bounded grace.
+- Added focused tests for refresh-before-acquire ordering, interval validation/default, stop drain through real cursor write, and bounded grace for a hanging poll.
+
+Fixwave R1 verification:
+
+| Check | Result | Evidence |
+|---|---|---|
+| Adapter test | PASS | `bun test tests/ebrain/apps/base/ingestion-source-adapter.test.ts` -> 11 pass, 0 fail, 38 expect() calls; PGLite v200 migrations applied and cursor row inspected for drain evidence. |
+| OAuth core gate | PASS | `bun test test/oauth.test.ts` -> 91 pass, 0 fail, 362 expect() calls. |
+| HTTP transport core gate | PASS | `bun test test/http-transport.test.ts` -> 28 pass, 0 fail, 82 expect() calls. |
+| Root typecheck | PASS | `bun run typecheck` -> `tsc --noEmit` exited 0. |
+| Diff check | PASS | `git diff --check` exited 0. |
+| Charter v2 core guard | PASS | `git diff 5834ac01 -- src/core/ src/mcp/ --stat` returned empty. |
+| Vendor connector guard | PASS | `git diff 5834ac01 -- src/ebrain/apps/feishu/ src/ebrain/apps/dingtalk/ src/ebrain/apps/wecom/ src/ebrain/apps/crm/ src/ebrain/apps/tencent-meeting/ --stat` returned empty. |
+| No full unit suite | PASS | Did not run `bun test test/` full suite per Sync-1a instruction/OOM warning. |
+
+Fixwave R1 runtime evidence notes:
+
+- Stop-drain coverage is not just a green unit assertion: the focused test starts a guarded poll, blocks `pollOnce`, calls `stop()`, verifies `stop()` does not resolve early, releases the poll, then reads `enterprise_ingest_sources.cursor_state` and observes `{ drained: true }`.
+- The bounded-grace path is covered with a test-only shortened grace while production default remains 30s.
+- No `src/core/*`, `src/mcp/*`, schema migration, dependency, or five vendor connector changes were made in R1.
+
 ## Files Changed
 
 ```text

@@ -60,13 +60,20 @@ export abstract class BaseEnterpriseIngestionSource implements IngestionSource {
   protected lastError?: string;
 
   private abortHandler?: () => void;
-  private pollInFlight = false;
+  private inFlightPoll?: Promise<void>;
+  private stopping = false;
+
+  protected stopDrainGraceMs = 30_000;
 
   constructor(opts: BaseIngestionSourceOpts) {
     this.id = opts.id;
     this.kind = opts.kind;
     this.app = opts.app;
-    this.pollIntervalMs = opts.pollIntervalMs ?? 60_000;
+    const interval = opts.pollIntervalMs ?? 60_000;
+    if (!Number.isFinite(interval) || interval <= 0) {
+      throw new Error(`pollIntervalMs must be positive finite, got: ${interval}`);
+    }
+    this.pollIntervalMs = interval;
     this.mode = opts.mode ?? 'trickle';
   }
 
@@ -75,6 +82,7 @@ export abstract class BaseEnterpriseIngestionSource implements IngestionSource {
       throw new Error(`BaseEnterpriseIngestionSource.start: source '${this.id}' is already running`);
     }
 
+    this.stopping = false;
     this.ctx = ctx;
     this.abortHandler = () => {
       void this.stop();
@@ -83,7 +91,7 @@ export abstract class BaseEnterpriseIngestionSource implements IngestionSource {
 
     await this.pollWithGuards();
 
-    if (ctx.abortSignal.aborted) {
+    if (ctx.abortSignal.aborted || this.stopping) {
       await this.stop();
       return;
     }
@@ -96,9 +104,25 @@ export abstract class BaseEnterpriseIngestionSource implements IngestionSource {
   }
 
   async stop(): Promise<void> {
+    this.stopping = true;
+
     if (this.timer) {
       clearInterval(this.timer);
       this.timer = undefined;
+    }
+
+    if (this.inFlightPoll) {
+      let drainTimer: ReturnType<typeof setTimeout> | undefined;
+      const poll = this.inFlightPoll;
+      await Promise.race([
+        poll.catch(() => undefined),
+        new Promise<void>((resolve) => {
+          drainTimer = setTimeout(resolve, this.stopDrainGraceMs);
+        }),
+      ]);
+      if (drainTimer) {
+        clearTimeout(drainTimer);
+      }
     }
 
     if (this.ctx && this.abortHandler) {
@@ -166,13 +190,26 @@ export abstract class BaseEnterpriseIngestionSource implements IngestionSource {
 
   protected async pollWithGuards(): Promise<void> {
     const ctx = this.requireContext();
+    if (this.stopping) return;
     if (ctx.abortSignal.aborted) return;
-    if (this.pollInFlight) {
+    if (this.inFlightPoll) {
       ctx.logger.warn(`[${this.id}] poll skipped because a previous poll is still running`);
       return;
     }
 
-    this.pollInFlight = true;
+    const poll = this.runPollWithGuards(ctx);
+    this.inFlightPoll = poll;
+
+    try {
+      await poll;
+    } finally {
+      if (this.inFlightPoll === poll) {
+        this.inFlightPoll = undefined;
+      }
+    }
+  }
+
+  private async runPollWithGuards(ctx: IngestionSourceContext): Promise<void> {
     let acquiredKeys: RateLimitKey[] = [];
 
     try {
@@ -182,16 +219,20 @@ export abstract class BaseEnterpriseIngestionSource implements IngestionSource {
         ctx.logger.warn(`[${this.id}] poll skipped because circuit is open`);
         return;
       }
+      if (this.stopping || ctx.abortSignal.aborted) return;
+
+      await this.refreshTokenIfNeeded();
+      if (this.stopping || ctx.abortSignal.aborted) return;
 
       acquiredKeys = this.rateLimitKeys();
       if (acquiredKeys.length > 0) {
         await this.app.rateLimiter.acquire(acquiredKeys);
       }
 
-      await this.refreshTokenIfNeeded();
-      if (ctx.abortSignal.aborted) return;
+      if (this.stopping || ctx.abortSignal.aborted) return;
 
       const cursorState = await this.readCursorState(ctx);
+      if (this.stopping || ctx.abortSignal.aborted) return;
       const result = await this.pollOnce(ctx, cursorState);
 
       for (const event of result.events) {
@@ -217,7 +258,6 @@ export abstract class BaseEnterpriseIngestionSource implements IngestionSource {
           acquiredKeys.map(({ tier, key }) => ({ tier, key })),
         );
       }
-      this.pollInFlight = false;
     }
   }
 

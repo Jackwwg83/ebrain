@@ -38,11 +38,14 @@ class FakeTokenManager implements TokenManager {
   isExpiredCalls: Array<{ kind: TokenKind; scope?: string }> = [];
   refreshCalls: Array<{ kind: TokenKind; scope?: string }> = [];
 
+  constructor(private readonly callOrder?: string[]) {}
+
   async getToken(_kind: TokenKind, _scope?: string): Promise<string> {
     return 'token';
   }
 
   async refresh(kind: TokenKind, scope?: string): Promise<TokenRefreshResult> {
+    this.callOrder?.push('refresh');
     this.refreshCalls.push({ kind, scope });
     return { accessToken: 'fresh-token', expiresAt: new Date(Date.now() + 3600_000) };
   }
@@ -57,7 +60,10 @@ class FakeRateLimiter implements TieredRateLimiter {
   acquired: RateLimitKey[][] = [];
   released: Array<Array<Omit<RateLimitKey, 'limit'>>> = [];
 
+  constructor(private readonly callOrder?: string[]) {}
+
   async acquire(keys: RateLimitKey[]): Promise<void> {
+    this.callOrder?.push('acquire');
     this.acquired.push(keys);
   }
 
@@ -71,6 +77,7 @@ class TestEnterpriseSource extends BaseEnterpriseIngestionSource {
   cursors: Record<string, unknown>[] = [];
   throwOnPoll = false;
   nextCursor?: Record<string, unknown>;
+  pollGate?: Promise<void>;
 
   async runGuarded(ctx: IngestionSourceContext): Promise<void> {
     this.ctx = ctx;
@@ -79,6 +86,14 @@ class TestEnterpriseSource extends BaseEnterpriseIngestionSource {
 
   isRunning(): boolean {
     return this.timer !== undefined;
+  }
+
+  getPollIntervalMs(): number {
+    return this.pollIntervalMs;
+  }
+
+  setStopDrainGraceMs(ms: number): void {
+    this.stopDrainGraceMs = ms;
   }
 
   makeTestEvent(opts: {
@@ -98,6 +113,9 @@ class TestEnterpriseSource extends BaseEnterpriseIngestionSource {
     this.cursors.push(cursorState);
     if (this.throwOnPoll) {
       throw new Error(`poll failed ${this.pollCalls}`);
+    }
+    if (this.pollGate) {
+      await this.pollGate;
     }
     return {
       events: [
@@ -196,6 +214,42 @@ describe('BaseEnterpriseIngestionSource', () => {
     expect(source.pollCalls).toBe(1);
   });
 
+  test('refreshes expired OAuth token before acquiring poll rate limit', async () => {
+    const callOrder: string[] = [];
+    const { app, tokenManager } = makeEnterpriseApp({ callOrder });
+    tokenManager.expired = true;
+    const source = new TestEnterpriseSource({
+      id: 'feishu-docs:tenant-acme',
+      kind: 'feishu-docs',
+      app,
+    });
+
+    await source.runGuarded(makeIngestionCtx());
+
+    expect(callOrder).toEqual(['refresh', 'acquire']);
+    expect(source.pollCalls).toBe(1);
+  });
+
+  test('rejects non-positive or non-finite pollIntervalMs and keeps the default', () => {
+    const { app } = makeEnterpriseApp();
+
+    for (const pollIntervalMs of [0, -1, Number.NaN]) {
+      expect(() => new TestEnterpriseSource({
+        id: `feishu-docs:tenant-${String(pollIntervalMs)}`,
+        kind: 'feishu-docs',
+        app,
+        pollIntervalMs,
+      })).toThrow('pollIntervalMs must be positive finite');
+    }
+
+    const source = new TestEnterpriseSource({
+      id: 'feishu-docs:tenant-default',
+      kind: 'feishu-docs',
+      app,
+    });
+    expect(source.getPollIntervalMs()).toBe(60_000);
+  });
+
   test('reads and writes cursor_state in enterprise_ingest_sources', async () => {
     await seedIngestSource({
       id: 'feishu-docs:tenant-acme',
@@ -245,6 +299,65 @@ describe('BaseEnterpriseIngestionSource', () => {
     await sleep(20);
 
     expect(source.pollCalls).toBe(callsAfterAbort);
+  });
+
+  test('stop drains an in-flight poll before resolving', async () => {
+    const { app } = makeEnterpriseApp();
+    let releasePoll!: () => void;
+    const source = new TestEnterpriseSource({
+      id: 'feishu-docs:tenant-acme',
+      kind: 'feishu-docs',
+      app,
+    });
+    source.nextCursor = { drained: true };
+    source.pollGate = new Promise(resolve => {
+      releasePoll = resolve;
+    });
+
+    const pollPromise = source.runGuarded(makeIngestionCtx());
+    await waitFor(() => source.pollCalls === 1);
+
+    let stopResolved = false;
+    const stopPromise = source.stop().then(() => {
+      stopResolved = true;
+    });
+    await sleep(20);
+    expect(stopResolved).toBe(false);
+
+    releasePoll();
+    await stopPromise;
+    await pollPromise;
+
+    const rows = await engine.executeRaw<{ cursor_state: unknown }>(
+      `SELECT cursor_state
+       FROM enterprise_ingest_sources
+       WHERE ingest_source_id = $1`,
+      ['feishu-docs:tenant-acme'],
+    );
+    expect(toRecord(rows[0].cursor_state)).toEqual({ drained: true });
+    expect(stopResolved).toBe(true);
+  });
+
+  test('stop returns after bounded grace when an in-flight poll hangs', async () => {
+    const { app } = makeEnterpriseApp();
+    const source = new TestEnterpriseSource({
+      id: 'feishu-docs:tenant-acme',
+      kind: 'feishu-docs',
+      app,
+    });
+    source.setStopDrainGraceMs(20);
+    source.pollGate = new Promise(() => {});
+
+    const pollPromise = source.runGuarded(makeIngestionCtx());
+    void pollPromise.catch(() => {});
+    await waitFor(() => source.pollCalls === 1);
+
+    const started = Date.now();
+    await source.stop();
+    const elapsed = Date.now() - started;
+
+    expect(elapsed).toBeGreaterThanOrEqual(15);
+    expect(elapsed).toBeLessThan(500);
   });
 
   test('records poll errors and opens circuit at existing threshold', async () => {
@@ -314,13 +427,13 @@ describe('BaseEnterpriseIngestionSource', () => {
   });
 });
 
-function makeEnterpriseApp(): {
+function makeEnterpriseApp(opts: { callOrder?: string[] } = {}): {
   app: EnterpriseApp;
   tokenManager: FakeTokenManager;
   rateLimiter: FakeRateLimiter;
 } {
-  const tokenManager = new FakeTokenManager();
-  const rateLimiter = new FakeRateLimiter();
+  const tokenManager = new FakeTokenManager(opts.callOrder);
+  const rateLimiter = new FakeRateLimiter(opts.callOrder);
   return {
     tokenManager,
     rateLimiter,
