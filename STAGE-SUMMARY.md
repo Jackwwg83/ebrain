@@ -2758,3 +2758,51 @@ docs/UPGRADING_FROM_GBRAIN.md
 scripts/check-upstream-drift.sh
 STAGE-SUMMARY.md
 ```
+
+# Sync-1a: BaseEnterpriseIngestionSource Adapter
+
+## Status
+
+- Stage: Sync-1a
+- Branch: `ebrain-mvp`
+- Scope: add the base adapter class for the EnterpriseConnector to upstream `IngestionSource` migration. This stage does not refactor the five vendor connectors.
+- Result: Implemented `BaseEnterpriseIngestionSource` with upstream source lifecycle plus ebrain OAuth refresh, tiered rate-limit acquisition, circuit breaker reuse, and `enterprise_ingest_sources.cursor_state` persistence.
+
+## Implementation
+
+- Added `src/ebrain/apps/base/ingestion-source-adapter.ts`.
+  - Implements upstream `IngestionSource` with `start(ctx)`, `stop()`, optional `healthCheck()`, `mode`, and synchronous `ctx.emit(event)` usage.
+  - Runs an initial guarded poll at `start()`, then schedules interval polling and clears it on `stop()` or `ctx.abortSignal`.
+  - Reuses `src/ebrain/sources/circuit-breaker.ts` for `checkCircuit`, `markIngestError`, and `resetCircuit`.
+  - Acquires app and tenant tier rate-limit keys before each poll and releases them in `finally`.
+  - Refreshes the default `tenant_access` token when `app.tokenManager.isExpired(...)` reports expired.
+  - Ensures an `enterprise_ingest_sources` row exists, reads `cursor_state` before `pollOnce`, writes the returned cursor after success, and records `last_success_at`.
+  - Provides `makeEvent(...)`, using upstream `computeContentHash`.
+- Exported the adapter from `src/ebrain/apps/base/index.ts`.
+- Added `tests/ebrain/apps/base/ingestion-source-adapter.test.ts` with a hermetic subclass and fake `EnterpriseApp`.
+
+## Verification Evidence
+
+| Check | Result | Evidence |
+|---|---|---|
+| Adapter test | PASS | `bun test tests/ebrain/apps/base/ingestion-source-adapter.test.ts` -> 7 pass, 0 fail, 27 expect() calls. |
+| OAuth core gate | PASS | `bun test test/oauth.test.ts` -> 91 pass, 0 fail, 362 expect() calls. |
+| HTTP transport core gate | PASS | `bun test test/http-transport.test.ts` -> 28 pass, 0 fail, 82 expect() calls. |
+| Root typecheck | PASS | `bun run typecheck` -> `tsc --noEmit` exited 0. |
+| No full unit suite | PASS | Did not run `bun test test/` full suite per Sync-1a instruction/OOM warning. |
+
+## Runtime Evidence Notes
+
+- The adapter test exercises a real isolated PGLite v200 schema and directly inspects `enterprise_ingest_sources.cursor_state`, `last_success_at`, `consecutive_errors`, `last_error`, and `circuit_open_until`.
+- The start/interval test observes actual `IngestionEvent` payloads emitted through `ctx.emit`, including `source_id`, `source_kind`, `source_uri`, and computed content hash fields.
+- Vendor API traffic is intentionally not exercised in Sync-1a; `pollOnce` is subclass-owned and remains mocked for this base-class stage.
+- No `src/core/*`, `src/mcp/*`, schema migration, dependency, or vendor connector changes were made.
+
+## Files Changed
+
+```text
+src/ebrain/apps/base/ingestion-source-adapter.ts
+src/ebrain/apps/base/index.ts
+tests/ebrain/apps/base/ingestion-source-adapter.test.ts
+STAGE-SUMMARY.md
+```
