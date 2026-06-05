@@ -9,6 +9,7 @@ import { encrypt } from '../../../../src/ebrain/secrets/crypto.ts';
 import { _setMasterKeyForTest } from '../../../../src/ebrain/secrets/master-key.ts';
 import { DingtalkEnterpriseApp } from '../../../../src/ebrain/apps/dingtalk/index.ts';
 import type { FetchLike } from '../../../../src/ebrain/apps/dingtalk/types.ts';
+import { toEnterpriseSlug } from '../../../../src/ebrain/sources/ingest-common.ts';
 
 export interface CapturedDingtalkRequest {
   url: string;
@@ -133,6 +134,86 @@ export async function readDingtalkSourceRow(engine: PGLiteEngine, sourceId: stri
   };
 }
 
+export async function readEnterpriseObjectRow(
+  engine: PGLiteEngine,
+  args: { sourceId: string; externalId: string },
+): Promise<{
+  externalId: string;
+  objectType: string;
+  pageSlug: string;
+  status: string;
+  rawRef: string | null;
+  metadata: Record<string, unknown>;
+}> {
+  const rows = await engine.executeRaw<{
+    external_id: string;
+    object_type: string;
+    page_slug: string;
+    status: string;
+    raw_ref: string | null;
+    metadata: unknown;
+  }>(
+    `SELECT external_id, object_type, page_slug, status, raw_ref, metadata
+     FROM enterprise_ingest_objects
+     WHERE ingest_source_id = $1 AND external_id = $2`,
+    [args.sourceId, args.externalId],
+  );
+  const row = rows[0];
+  if (!row) throw new Error(`Missing enterprise object ${args.sourceId}/${args.externalId}`);
+  return {
+    externalId: row.external_id,
+    objectType: row.object_type,
+    pageSlug: row.page_slug,
+    status: row.status,
+    rawRef: row.raw_ref,
+    metadata: toRecord(row.metadata),
+  };
+}
+
+export async function countEnterpriseObjects(engine: PGLiteEngine, sourceId: string): Promise<number> {
+  const rows = await engine.executeRaw<{ count: number }>(
+    `SELECT count(*)::int AS count
+     FROM enterprise_ingest_objects
+     WHERE ingest_source_id = $1`,
+    [sourceId],
+  );
+  return rows[0]?.count ?? 0;
+}
+
+export async function readEnterprisePage(engine: PGLiteEngine, slug: string): Promise<{
+  slug: string;
+  title: string;
+  compiledTruth: string;
+  frontmatter: Record<string, unknown>;
+  provenance: Record<string, unknown>;
+}> {
+  const rows = await engine.executeRaw<{
+    slug: string;
+    title: string;
+    compiled_truth: string;
+    frontmatter: unknown;
+    provenance: unknown;
+  }>(
+    `SELECT slug, title, compiled_truth, frontmatter, provenance
+     FROM pages
+     WHERE source_id = 'enterprise' AND slug = $1 AND deleted_at IS NULL`,
+    [slug],
+  );
+  const row = rows[0];
+  if (!row) throw new Error(`Missing enterprise page ${slug}`);
+  return {
+    slug: row.slug,
+    title: row.title,
+    compiledTruth: row.compiled_truth,
+    frontmatter: toRecord(row.frontmatter),
+    provenance: toRecord(row.provenance),
+  };
+}
+
+export function dingtalkEnterpriseSlug(sourceId: string, externalId: string): string {
+  return toEnterpriseSlug('dingtalk', sourceId, externalId);
+}
+
 export function makeDingtalkListFetch<T>(
   arrayKey: string,
   records: T[],
@@ -193,7 +274,7 @@ export function makeDingtalkApp(args: {
   });
 }
 
-function toRecord(value: unknown): Record<string, unknown> {
+export function toRecord(value: unknown): Record<string, unknown> {
   if (typeof value === 'string') return JSON.parse(value) as Record<string, unknown>;
   if (value && typeof value === 'object' && !Array.isArray(value)) return value as Record<string, unknown>;
   return {};

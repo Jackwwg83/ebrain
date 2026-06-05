@@ -2841,7 +2841,7 @@ STAGE-SUMMARY.md
 - Stage: Sync-1b
 - Branch: `ebrain-mvp`
 - Scope: refactor the five real DingTalk sub-connectors from `EnterpriseConnector` pull/upsert adapters into `BaseEnterpriseIngestionSource` implementations. Other vendors remain untouched for Sync-1c.
-- Result: `dingtalk-im`, `dingtalk-docs`, `dingtalk-drive`, `dingtalk-calendar`, and `dingtalk-meeting` now emit upstream `IngestionEvent` payloads and let the Sync-1a base handle source rows, cursor persistence, circuit state, token refresh, and poll rate guards.
+- Result: R1 restored the DingTalk enterprise output contract. `dingtalk-im`, `dingtalk-docs`, `dingtalk-drive`, `dingtalk-calendar`, and `dingtalk-meeting` now return `EnterpriseIngestObject[]`; the Sync-1a base handles source rows, cursor persistence, circuit state, token refresh, poll rate guards, and direct `upsertEnterpriseObject` writes.
 
 ## Implementation
 
@@ -2856,14 +2856,14 @@ STAGE-SUMMARY.md
   - Removed `runDingtalkConnectorBatch`, `runDingtalkConnectorLoad`, `ensureDingtalkIngestSource`, and sub-connector cursor writes.
 - Updated `DingtalkEnterpriseApp.subConnectors` to register `BaseEnterpriseIngestionSource[]` with unique ids such as `dingtalk-docs:dingtalk-dev` and source kinds such as `dingtalk-docs`.
 - Widened the ebrain `EnterpriseApp.subConnectors` type to `EnterpriseConnector | IngestionSource` without changing the `EnterpriseConnector` interface.
-- Updated DingTalk tests to use `IngestionSource.start(ctx)` and inspect emitted events plus `enterprise_ingest_sources.cursor_state`.
+- Updated DingTalk tests to use `IngestionSource.start(ctx)` and inspect `enterprise_ingest_objects`, enterprise pages, page frontmatter/provenance, raw IM merge payloads, and `enterprise_ingest_sources.cursor_state`.
 
 ## Verification Evidence
 
 | Check | Result | Evidence |
 |---|---|---|
-| DingTalk focused suite | PASS | `bun test tests/ebrain/apps/dingtalk/` -> 26 pass, 0 fail, 105 expect() calls. |
-| Adapter regression | PASS | `bun test tests/ebrain/apps/base/ingestion-source-adapter.test.ts` -> 11 pass, 0 fail, 38 expect() calls. |
+| DingTalk focused suite | PASS | `bun test tests/ebrain/apps/dingtalk/` -> 28 pass, 0 fail, 125 expect() calls. |
+| Adapter regression | PASS | `bun test tests/ebrain/apps/base/ingestion-source-adapter.test.ts` -> 12 pass, 0 fail, 44 expect() calls. |
 | OAuth core gate | PASS | `bun test test/oauth.test.ts` -> 91 pass, 0 fail, 362 expect() calls. |
 | HTTP transport core gate | PASS | `bun test test/http-transport.test.ts` -> 28 pass, 0 fail, 82 expect() calls. |
 | Root typecheck | PASS | `bun run typecheck` -> `tsc --noEmit` exited 0. |
@@ -2875,11 +2875,43 @@ STAGE-SUMMARY.md
 
 ## Runtime Evidence Notes
 
-- Each DingTalk source test starts the real `BaseEnterpriseIngestionSource` lifecycle with a real `IngestionSourceContext`, captures `ctx.emit(event)`, and then stops the source.
+- Each DingTalk source test starts the real `BaseEnterpriseIngestionSource` lifecycle with a real `IngestionSourceContext` and then stops the source.
 - The mock DingTalk API requests were inspected directly. Example docs request body: `{ mode: 'incremental', since: '2026-05-18T00:00:00.000Z' }`, with `x-acs-dingtalk-access-token: tenant-token`.
-- Emitted event payloads were validated with upstream `validateIngestionEvent`; observed fields include `source_id`, `source_kind`, `source_uri` (`dingtalk://docs/...`, `dingtalk://im/...`, `dingtalk://drive/...`, `dingtalk://calendar/...`, `dingtalk://meeting/...`), `content_type`, `content_hash`, and `untrusted_payload: true`.
-- Real PGLite rows were inspected after source execution. Each source wrote `enterprise_ingest_sources.cursor_state.lastSyncedAt` from the latest fixture timestamp and set `last_success_at`.
+- Real PGLite rows were inspected after source execution. DingTalk docs wrote an `enterprise_ingest_objects` row keyed by `ingest_source_id = dingtalk-docs:dingtalk-dev` and `external_id = dt-doc-01`, with stable enterprise slug `dingtalk/dingtalk-docs-dingtalk-dev-.../dt-doc-01-...`, status `ingested`, and metadata including `slug`, `external_id`, `object_type`, `source_type`, `url`, `participants`, `classification`, and `raw_ref`.
+- The produced enterprise page for the same docs object was read from `pages` and verified to carry frontmatter/provenance fields `ingest_source_id`, `external_id`, `object_type`, `source_type`, `url`, `participants`, and `classification`.
+- The IM cross-poll regression ran two real source polls for one thread and inspected the persisted `raw_ref` JSON after the second poll: `raw_messages` contained `dt-thread-msg-1` and `dt-thread-msg-2`, proving merge-by-message-id survived the refactor.
+- Migration-mode docs polling was exercised with `mode: backfill` on both DingTalk API requests; repeated polls kept one slug-keyed enterprise object row.
+- Each source wrote `enterprise_ingest_sources.cursor_state.lastSyncedAt` from the latest fixture timestamp and set `last_success_at`.
 - Error evidence remains runtime-backed: the docs failure test runs the source against a 500 mock DingTalk response and reads `consecutive_errors = 1` plus a `last_error` containing `DingTalk API`.
+
+## Sync-1b Fixwave R1: Restore Enterprise Output Semantics
+
+- Review source: `/Users/jackwu/Projects/EBRAIN_SYNC1B_REVIEW.md`, H-001 plus M-001.
+- H-001 fix: `BaseEnterpriseIngestionSource.pollWithGuards` no longer calls `ctx.emit` internally for enterprise app sources. It writes each returned `EnterpriseIngestObject` through `upsertEnterpriseObject(this.operationCtx(ctx), obj)`, restoring `enterprise_ingest_objects` rows plus enterprise pages.
+- DingTalk fix: all five sub-connectors now return `EnterpriseIngestObject[]` with stable slug metadata, external id, object type, source type, URL, participants, classification, and raw refs. Sub-connectors do not call `upsertEnterpriseObject` directly.
+- IM fix: thread objects read existing `enterprise_ingest_objects.raw_ref`, merge `raw_messages` by `messageId`, and write the merged object back through the base path.
+- M-001 fix: constructor `mode: 'migration'` remains exposed and is covered by a docs test that observes `mode: backfill` plus one stable enterprise object row after repeated polls.
+- Charter v2 guard: no `src/core/*` or `src/mcp/*` diffs.
+- Other vendor guard: no `feishu`, `wecom`, `crm`, or `tencent-meeting` app diffs.
+
+R1 files changed:
+
+```text
+src/ebrain/apps/base/ingestion-source-adapter.ts
+src/ebrain/apps/dingtalk/sub-connectors/calendar.ts
+src/ebrain/apps/dingtalk/sub-connectors/docs.ts
+src/ebrain/apps/dingtalk/sub-connectors/drive.ts
+src/ebrain/apps/dingtalk/sub-connectors/im.ts
+src/ebrain/apps/dingtalk/sub-connectors/meeting.ts
+tests/ebrain/apps/base/ingestion-source-adapter.test.ts
+tests/ebrain/apps/dingtalk/helpers.ts
+tests/ebrain/apps/dingtalk/sub-connectors/calendar.test.ts
+tests/ebrain/apps/dingtalk/sub-connectors/docs.test.ts
+tests/ebrain/apps/dingtalk/sub-connectors/drive.test.ts
+tests/ebrain/apps/dingtalk/sub-connectors/im.test.ts
+tests/ebrain/apps/dingtalk/sub-connectors/meeting.test.ts
+STAGE-SUMMARY.md
+```
 
 ## Files Changed
 

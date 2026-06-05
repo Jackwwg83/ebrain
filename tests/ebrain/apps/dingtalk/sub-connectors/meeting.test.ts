@@ -1,15 +1,15 @@
 import { setDefaultTimeout, afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import {
-  validateIngestionEvent,
-  type IngestionEvent,
-} from '../../../../../src/core/ingestion/types.ts';
 import { DingtalkMeetingSource } from '../../../../../src/ebrain/apps/dingtalk/index.ts';
 import type { DingtalkMeetingItem } from '../../../../../src/ebrain/apps/dingtalk/types.ts';
 import {
+  countEnterpriseObjects,
+  dingtalkEnterpriseSlug,
   latestDingtalkCursor,
   makeDingtalkApp,
   makeDingtalkListFetch,
   makeIngestionCtx,
+  readEnterpriseObjectRow,
+  readEnterprisePage,
   readDingtalkSourceRow,
   runInitialSourcePoll,
   seedDingtalkApp,
@@ -34,10 +34,9 @@ afterEach(async () => {
 });
 
 describe('DingtalkMeetingSource', () => {
-  test('emits meeting events, advances cursor, and calls DingTalk meeting API with cursor', async () => {
+  test('writes meeting enterprise objects, advances cursor, and calls DingTalk meeting API with cursor', async () => {
     const meetings = await Bun.file('src/ebrain/apps/dingtalk/fixtures/meeting-list.json').json() as DingtalkMeetingItem[];
     const requests: CapturedDingtalkRequest[] = [];
-    const emitted: IngestionEvent[] = [];
 
     await seedDingtalkApp(engine);
     await seedTenantToken(engine, 'tenant-token', '2026-05-20T04:00:00.000Z');
@@ -53,7 +52,7 @@ describe('DingtalkMeetingSource', () => {
       cursorState: { lastSyncedAt: '2026-05-18T00:00:00.000Z' },
     });
 
-    await runInitialSourcePoll(source, makeIngestionCtx({ engine, emitted }));
+    await runInitialSourcePoll(source, makeIngestionCtx({ engine }));
 
     expect(requests).toHaveLength(1);
     expect(requests[0]).toMatchObject({
@@ -61,17 +60,42 @@ describe('DingtalkMeetingSource', () => {
       body: { mode: 'incremental', since: '2026-05-18T00:00:00.000Z' },
     });
     expect(meetings.length).toBeGreaterThanOrEqual(5);
-    expect(emitted).toHaveLength(meetings.length);
-    expect(emitted[0]).toMatchObject({
-      source_id: source.id,
-      source_kind: 'dingtalk-meeting',
-      source_uri: `dingtalk://meeting/${meetings[0].meetingId}`,
-      content_type: 'text/markdown',
-      untrusted_payload: true,
+    expect(await countEnterpriseObjects(engine, source.id)).toBe(meetings.length);
+    const expectedSlug = dingtalkEnterpriseSlug(source.id, meetings[0].meetingId);
+    const object = await readEnterpriseObjectRow(engine, {
+      sourceId: source.id,
+      externalId: meetings[0].meetingId,
     });
-    expect(emitted[0].content).toContain('## Transcript');
-    expect(emitted.some((event) => event.content.includes('Skipped:'))).toBe(true);
-    expect(validateIngestionEvent(emitted[0])).toBeNull();
+    expect(object).toMatchObject({
+      externalId: meetings[0].meetingId,
+      objectType: meetings[0].transcriptMarkdown ? 'meeting-transcript' : 'meeting',
+      pageSlug: expectedSlug,
+      status: 'ingested',
+    });
+    expect(object.metadata).toMatchObject({
+      slug: expectedSlug,
+      external_id: meetings[0].meetingId,
+      source_type: 'dingtalk',
+      raw_ref: `dingtalk://meeting/${meetings[0].meetingId}`,
+    });
+    const page = await readEnterprisePage(engine, expectedSlug);
+    expect(page.compiledTruth).toContain('## Transcript');
+    expect(page.frontmatter).toMatchObject({
+      external_id: meetings[0].meetingId,
+      object_type: meetings[0].transcriptMarkdown ? 'meeting-transcript' : 'meeting',
+      url: meetings[0].url ?? meetings[0].recordingUrl,
+      participants: [meetings[0].hostUserId, ...(meetings[0].participantUserIds ?? [])],
+      classification: 'L1',
+    });
+
+    const skippedRows = await engine.executeRaw<{ compiled_truth: string }>(
+      `SELECT p.compiled_truth
+       FROM pages p
+       JOIN enterprise_ingest_objects o ON o.page_slug = p.slug
+       WHERE o.ingest_source_id = $1`,
+      [source.id],
+    );
+    expect(skippedRows.some((row) => row.compiled_truth.includes('Skipped:'))).toBe(true);
 
     const row = await readDingtalkSourceRow(engine, source.id);
     expect(row.cursorState).toEqual({ lastSyncedAt: latestDingtalkCursor(meetings) });

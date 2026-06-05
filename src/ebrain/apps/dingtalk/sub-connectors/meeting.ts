@@ -1,8 +1,5 @@
-import type {
-  IngestionEvent,
-  IngestionSourceContext,
-} from '../../../../core/ingestion/types.ts';
-import { BaseEnterpriseIngestionSource } from '../../base/index.ts';
+import type { IngestionSourceContext } from '../../../../core/ingestion/types.ts';
+import { BaseEnterpriseIngestionSource, type EnterpriseIngestObject } from '../../base/index.ts';
 import type { DingtalkEnterpriseApp } from '../app.ts';
 import type { DingtalkMeetingItem } from '../types.ts';
 import {
@@ -43,10 +40,10 @@ export class DingtalkMeetingSource extends BaseEnterpriseIngestionSource {
   protected async pollOnce(
     _ctx: IngestionSourceContext,
     cursorState: Record<string, unknown>,
-  ): Promise<{ events: IngestionEvent[]; cursorState: Record<string, unknown> }> {
+  ): Promise<{ objects: EnterpriseIngestObject[]; cursorState: Record<string, unknown> }> {
     const meetings = await this.loadMeetings(cursorState);
     return {
-      events: meetings.map((meeting) => this.meetingToEvent(meeting)),
+      objects: meetings.map((meeting) => this.meetingToObject(meeting)),
       cursorState: cursorStateFor(meetings),
     };
   }
@@ -64,16 +61,21 @@ export class DingtalkMeetingSource extends BaseEnterpriseIngestionSource {
     );
   }
 
-  private meetingToEvent(meeting: DingtalkMeetingItem): IngestionEvent {
+  private meetingToObject(meeting: DingtalkMeetingItem): EnterpriseIngestObject {
     const hasTranscript = Boolean(meeting.transcriptMarkdown);
     const meetingId = requireDingtalkString(meeting.meetingId, 'meetingId');
     const title = requireDingtalkString(meeting.title, 'title');
     const startTime = requireDingtalkString(meeting.startTime, 'startTime');
+    const participants = uniqueStrings([
+      meeting.hostUserId,
+      ...(meeting.participantUserIds ?? []),
+    ]);
 
-    return this.makeEvent({
-      source_uri: `dingtalk://meeting/${meetingId}`,
-      content_type: 'text/markdown',
-      content: [
+    return this.makeEnterpriseObject({
+      externalId: meetingId,
+      objectType: hasTranscript ? 'meeting-transcript' : 'meeting',
+      title,
+      bodyMarkdown: [
         `# ${title}`,
         '',
         `- start: ${startTime}`,
@@ -84,7 +86,25 @@ export class DingtalkMeetingSource extends BaseEnterpriseIngestionSource {
         hasTranscript ? '\n## Transcript\n' : `\n## Transcript\nSkipped: ${meeting.transcriptUnavailableReason ?? 'DingTalk API did not return a transcript.'}`,
         meeting.transcriptMarkdown ?? '',
       ].filter(Boolean).join('\n'),
-      trusted: false,
+      modifiedAt: meeting.modifiedTime ?? meeting.endTime ?? startTime,
+      url: meeting.url ?? meeting.recordingUrl,
+      participants,
+      classification: 'L1',
+      raw: meeting.raw ?? meeting,
+      rawRef: `dingtalk://meeting/${meetingId}`,
+      metadata: {
+        dingtalk_object: hasTranscript ? 'meeting-transcript' : 'meeting',
+        host_user_id: meeting.hostUserId ?? null,
+        participant_user_ids: meeting.participantUserIds ?? [],
+        start_time: startTime,
+        end_time: meeting.endTime ?? null,
+        recording_url: meeting.recordingUrl ?? null,
+        transcript_available: hasTranscript,
+      },
     });
   }
+}
+
+function uniqueStrings(values: Array<string | undefined>): string[] {
+  return [...new Set(values.filter((value): value is string => Boolean(value)))];
 }

@@ -1,8 +1,5 @@
-import type {
-  IngestionEvent,
-  IngestionSourceContext,
-} from '../../../../core/ingestion/types.ts';
-import { BaseEnterpriseIngestionSource } from '../../base/index.ts';
+import type { IngestionSourceContext } from '../../../../core/ingestion/types.ts';
+import { BaseEnterpriseIngestionSource, type EnterpriseIngestObject } from '../../base/index.ts';
 import type { DingtalkEnterpriseApp } from '../app.ts';
 import type { DingtalkDocItem } from '../types.ts';
 import {
@@ -43,10 +40,10 @@ export class DingtalkDocsSource extends BaseEnterpriseIngestionSource {
   protected async pollOnce(
     _ctx: IngestionSourceContext,
     cursorState: Record<string, unknown>,
-  ): Promise<{ events: IngestionEvent[]; cursorState: Record<string, unknown> }> {
+  ): Promise<{ objects: EnterpriseIngestObject[]; cursorState: Record<string, unknown> }> {
     const docs = await this.loadDocs(cursorState);
     return {
-      events: docs.map((doc) => this.docToEvent(doc)),
+      objects: docs.map((doc) => this.docToObject(doc)),
       cursorState: cursorStateFor(docs),
     };
   }
@@ -64,16 +61,28 @@ export class DingtalkDocsSource extends BaseEnterpriseIngestionSource {
     );
   }
 
-  private docToEvent(doc: DingtalkDocItem): IngestionEvent {
+  private docToObject(doc: DingtalkDocItem): EnterpriseIngestObject {
     const docId = requireDingtalkString(doc.docId, 'docId');
     const title = requireDingtalkString(doc.title, 'title');
-    requireDingtalkString(doc.modifiedTime, 'modifiedTime');
+    const modifiedTime = requireDingtalkString(doc.modifiedTime, 'modifiedTime');
 
-    return this.makeEvent({
-      source_uri: `dingtalk://docs/${docId}`,
-      content_type: 'text/markdown',
-      content: doc.markdown ?? `# ${title}\n\nDingTalk document content was not returned by the list API.`,
-      trusted: false,
+    return this.makeEnterpriseObject({
+      externalId: docId,
+      objectType: 'doc',
+      title,
+      bodyMarkdown: doc.markdown ?? `# ${title}\n\nDingTalk document content was not returned by the list API.`,
+      modifiedAt: modifiedTime,
+      url: doc.url,
+      participants: doc.ownerUserId ? [doc.ownerUserId] : [],
+      ownerOrgUnit: doc.spaceId,
+      classification: 'L1',
+      raw: doc.raw ?? doc,
+      rawRef: `dingtalk://docs/${docId}`,
+      metadata: {
+        dingtalk_object: 'doc',
+        owner_user_id: doc.ownerUserId ?? null,
+        space_id: doc.spaceId ?? null,
+      },
     });
   }
 }

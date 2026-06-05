@@ -13,13 +13,10 @@ import type {
   IngestionSource,
   IngestionSourceContext,
 } from '../../../../src/core/ingestion/types.ts';
-import {
-  computeContentHash,
-  validateIngestionEvent,
-} from '../../../../src/core/ingestion/types.ts';
 import type {
   EnterpriseApp,
   EnterpriseConnector,
+  EnterpriseIngestObject,
   RateLimitKey,
   TieredRateLimiter,
   TokenKind,
@@ -27,6 +24,7 @@ import type {
   TokenRefreshResult,
 } from '../../../../src/ebrain/apps/base/index.ts';
 import { BaseEnterpriseIngestionSource } from '../../../../src/ebrain/apps/base/index.ts';
+import { toEnterpriseSlug } from '../../../../src/ebrain/sources/ingest-common.ts';
 import { resetPgliteState } from '../../../../test/helpers/reset-pglite.ts';
 
 setDefaultTimeout(30_000);
@@ -96,19 +94,25 @@ class TestEnterpriseSource extends BaseEnterpriseIngestionSource {
     this.stopDrainGraceMs = ms;
   }
 
-  makeTestEvent(opts: {
-    source_uri: string;
-    content_type: IngestionEvent['content_type'];
-    content: string;
-    trusted?: boolean;
-  }): IngestionEvent {
-    return this.makeEvent(opts);
+  makeTestObject(overrides: Partial<EnterpriseIngestObject> = {}): EnterpriseIngestObject {
+    return this.makeEnterpriseObject({
+      externalId: 'doc-helper',
+      objectType: 'doc',
+      title: 'Helper Doc',
+      bodyMarkdown: 'Helper body',
+      modifiedAt: '2026-05-20T00:00:00.000Z',
+      url: 'https://example.test/helper',
+      participants: ['user-helper'],
+      rawRef: 'feishu://doc/doc-helper',
+      metadata: { helper: true },
+      ...overrides,
+    });
   }
 
   protected async pollOnce(
     _ctx: IngestionSourceContext,
     cursorState: Record<string, unknown>,
-  ): Promise<{ events: IngestionEvent[]; cursorState: Record<string, unknown> }> {
+  ): Promise<{ objects: EnterpriseIngestObject[]; cursorState: Record<string, unknown> }> {
     this.pollCalls += 1;
     this.cursors.push(cursorState);
     if (this.throwOnPoll) {
@@ -117,12 +121,21 @@ class TestEnterpriseSource extends BaseEnterpriseIngestionSource {
     if (this.pollGate) {
       await this.pollGate;
     }
+    const externalId = `doc-${this.pollCalls}`;
     return {
-      events: [
-        this.makeEvent({
-          source_uri: `feishu://doc/${this.pollCalls}`,
-          content_type: 'text/markdown',
-          content: `body-${this.pollCalls}`,
+      objects: [
+        this.makeEnterpriseObject({
+          externalId,
+          objectType: 'doc',
+          title: `Doc ${this.pollCalls}`,
+          bodyMarkdown: `body-${this.pollCalls}`,
+          modifiedAt: `2026-05-20T00:0${this.pollCalls}:00.000Z`,
+          url: `https://example.test/docs/${externalId}`,
+          participants: ['user-a', 'user-b'],
+          classification: 'L1',
+          raw: { id: externalId, body: `body-${this.pollCalls}` },
+          rawRef: `feishu://doc/${externalId}`,
+          metadata: { fixture: true },
         }),
       ],
       cursorState: this.nextCursor ?? { count: this.pollCalls },
@@ -146,7 +159,7 @@ beforeEach(async () => {
 });
 
 describe('BaseEnterpriseIngestionSource', () => {
-  test('implements IngestionSource and emits from initial and interval polls', async () => {
+  test('implements IngestionSource and upserts from initial and interval polls', async () => {
     const { app, rateLimiter } = makeEnterpriseApp();
     const source = new TestEnterpriseSource({
       id: 'feishu-docs:tenant-acme',
@@ -163,11 +176,19 @@ describe('BaseEnterpriseIngestionSource', () => {
       expect(source.pollCalls).toBe(1);
       await waitFor(() => source.pollCalls >= 2);
 
-      expect(emitted.length).toBeGreaterThanOrEqual(2);
-      expect(emitted[0]).toMatchObject({
-        source_id: 'feishu-docs:tenant-acme',
-        source_kind: 'feishu-docs',
-        source_uri: 'feishu://doc/1',
+      expect(emitted).toEqual([]);
+      const rows = await engine.executeRaw<{ external_id: string; page_slug: string; status: string }>(
+        `SELECT external_id, page_slug, status
+         FROM enterprise_ingest_objects
+         WHERE ingest_source_id = $1
+         ORDER BY external_id`,
+        ['feishu-docs:tenant-acme'],
+      );
+      expect(rows.length).toBeGreaterThanOrEqual(2);
+      expect(rows).toContainEqual({
+        external_id: 'doc-1',
+        page_slug: toEnterpriseSlug('feishu', 'feishu-docs:tenant-acme', 'doc-1'),
+        status: 'ingested',
       });
       expect(rateLimiter.acquired.length).toBeGreaterThanOrEqual(2);
       expect(rateLimiter.released.length).toBe(rateLimiter.acquired.length);
@@ -277,6 +298,77 @@ describe('BaseEnterpriseIngestionSource', () => {
     );
     expect(toRecord(rows[0].cursor_state)).toEqual({ page_token: 'after', total_seen: 3 });
     expect(rows[0].last_success_at).toBeTruthy();
+  });
+
+  test('writes enterprise object rows and page provenance instead of daemon events', async () => {
+    const { app } = makeEnterpriseApp();
+    const source = new TestEnterpriseSource({
+      id: 'feishu-docs:tenant-acme',
+      kind: 'feishu-docs',
+      app,
+    });
+    const emitted: IngestionEvent[] = [];
+
+    await source.runGuarded(makeIngestionCtx({ emitted }));
+
+    expect(emitted).toEqual([]);
+    const expectedSlug = toEnterpriseSlug('feishu', 'feishu-docs:tenant-acme', 'doc-1');
+    const objectRows = await engine.executeRaw<{
+      external_id: string;
+      object_type: string;
+      page_slug: string;
+      metadata: unknown;
+    }>(
+      `SELECT external_id, object_type, page_slug, metadata
+       FROM enterprise_ingest_objects
+       WHERE ingest_source_id = $1 AND external_id = $2`,
+      ['feishu-docs:tenant-acme', 'doc-1'],
+    );
+    expect(objectRows).toHaveLength(1);
+    expect(objectRows[0]).toMatchObject({
+      external_id: 'doc-1',
+      object_type: 'doc',
+      page_slug: expectedSlug,
+    });
+    expect(toRecord(objectRows[0].metadata)).toMatchObject({
+      source_type: 'feishu',
+      object_type: 'doc',
+      raw_inline: true,
+    });
+
+    const pageRows = await engine.executeRaw<{
+      slug: string;
+      frontmatter: unknown;
+      provenance: unknown;
+    }>(
+      `SELECT slug, frontmatter, provenance
+       FROM pages
+       WHERE source_id = 'enterprise' AND slug = $1`,
+      [expectedSlug],
+    );
+    expect(pageRows).toHaveLength(1);
+    expect(toRecord(pageRows[0].frontmatter)).toMatchObject({
+      external_id: 'doc-1',
+      object_type: 'doc',
+      url: 'https://example.test/docs/doc-1',
+      participants: ['user-a', 'user-b'],
+      classification: 'L1',
+    });
+    expect(toRecord(pageRows[0].provenance)).toMatchObject({
+      ingest_source_id: 'feishu-docs:tenant-acme',
+      external_id: 'doc-1',
+      object_type: 'doc',
+      source_type: 'feishu',
+      url: 'https://example.test/docs/doc-1',
+      participants: ['user-a', 'user-b'],
+      metadata: {
+        slug: expectedSlug,
+        external_id: 'doc-1',
+        object_type: 'doc',
+        source_type: 'feishu',
+        raw_ref: 'feishu://doc/doc-1',
+      },
+    });
   });
 
   test('stops polling when ctx.abortSignal aborts', async () => {
@@ -398,7 +490,7 @@ describe('BaseEnterpriseIngestionSource', () => {
     expect(health.message).toContain('circuit open until');
   });
 
-  test('makeEvent fills required upstream fields and computeContentHash', () => {
+  test('makeEnterpriseObject stamps source provenance metadata', () => {
     const { app } = makeEnterpriseApp();
     const source = new TestEnterpriseSource({
       id: 'feishu-docs:tenant-acme',
@@ -406,24 +498,31 @@ describe('BaseEnterpriseIngestionSource', () => {
       app,
     });
 
-    const event = source.makeTestEvent({
-      source_uri: 'feishu://doc/doc-1',
-      content_type: 'text/plain',
-      content: 'hello enterprise',
-      trusted: false,
+    const obj = source.makeTestObject({
+      externalId: 'doc-1',
     });
+    const expectedSlug = toEnterpriseSlug('feishu', 'feishu-docs:tenant-acme', 'doc-1');
 
-    expect(event).toMatchObject({
-      source_id: 'feishu-docs:tenant-acme',
-      source_kind: 'feishu-docs',
-      source_uri: 'feishu://doc/doc-1',
-      content_type: 'text/plain',
-      content: 'hello enterprise',
-      content_hash: computeContentHash('hello enterprise'),
-      untrusted_payload: true,
+    expect(obj).toMatchObject({
+      sourceId: 'feishu-docs:tenant-acme',
+      sourceType: 'feishu',
+      externalId: 'doc-1',
+      objectType: 'doc',
+      classification: 'L1',
+      participants: ['user-helper'],
+      metadata: {
+        helper: true,
+        slug: expectedSlug,
+        ingest_source_id: 'feishu-docs:tenant-acme',
+        external_id: 'doc-1',
+        object_type: 'doc',
+        source_type: 'feishu',
+        url: 'https://example.test/helper',
+        participants: ['user-helper'],
+        classification: 'L1',
+        raw_ref: 'feishu://doc/doc-helper',
+      },
     });
-    expect(Date.parse(event.received_at)).toBeGreaterThan(0);
-    expect(validateIngestionEvent(event)).toBeNull();
   });
 });
 

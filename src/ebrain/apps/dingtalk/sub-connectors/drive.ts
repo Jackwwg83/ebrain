@@ -1,8 +1,5 @@
-import type {
-  IngestionEvent,
-  IngestionSourceContext,
-} from '../../../../core/ingestion/types.ts';
-import { BaseEnterpriseIngestionSource } from '../../base/index.ts';
+import type { IngestionSourceContext } from '../../../../core/ingestion/types.ts';
+import { BaseEnterpriseIngestionSource, type EnterpriseIngestObject } from '../../base/index.ts';
 import type { DingtalkEnterpriseApp } from '../app.ts';
 import type { DingtalkDriveFile } from '../types.ts';
 import {
@@ -43,10 +40,10 @@ export class DingtalkDriveSource extends BaseEnterpriseIngestionSource {
   protected async pollOnce(
     _ctx: IngestionSourceContext,
     cursorState: Record<string, unknown>,
-  ): Promise<{ events: IngestionEvent[]; cursorState: Record<string, unknown> }> {
+  ): Promise<{ objects: EnterpriseIngestObject[]; cursorState: Record<string, unknown> }> {
     const files = await this.loadFiles(cursorState);
     return {
-      events: files.map((file) => this.fileToEvent(file)),
+      objects: files.map((file) => this.fileToObject(file)),
       cursorState: cursorStateFor(files),
     };
   }
@@ -64,15 +61,16 @@ export class DingtalkDriveSource extends BaseEnterpriseIngestionSource {
     );
   }
 
-  private fileToEvent(file: DingtalkDriveFile): IngestionEvent {
+  private fileToObject(file: DingtalkDriveFile): EnterpriseIngestObject {
     const fileId = requireDingtalkString(file.fileId, 'fileId');
     const name = requireDingtalkString(file.name, 'name');
-    requireDingtalkString(file.modifiedTime, 'modifiedTime');
+    const modifiedTime = requireDingtalkString(file.modifiedTime, 'modifiedTime');
 
-    return this.makeEvent({
-      source_uri: `dingtalk://drive/${fileId}`,
-      content_type: 'text/markdown',
-      content: [
+    return this.makeEnterpriseObject({
+      externalId: fileId,
+      objectType: 'drive-file',
+      title: name,
+      bodyMarkdown: [
         `# ${name}`,
         '',
         `- file_id: ${fileId}`,
@@ -80,7 +78,18 @@ export class DingtalkDriveSource extends BaseEnterpriseIngestionSource {
         `- size_bytes: ${file.size ?? 'unknown'}`,
         `- raw_ref: ${file.rawRef ?? 'not_downloaded'}`,
       ].join('\n'),
-      trusted: false,
+      modifiedAt: modifiedTime,
+      url: file.url,
+      participants: file.ownerUserId ? [file.ownerUserId] : [],
+      classification: 'L1',
+      raw: file.raw ?? file,
+      rawRef: file.rawRef ?? `dingtalk://drive/${fileId}`,
+      metadata: {
+        dingtalk_object: 'drive-file',
+        owner_user_id: file.ownerUserId ?? null,
+        mime_type: file.mimeType ?? null,
+        size_bytes: file.size ?? null,
+      },
     });
   }
 }

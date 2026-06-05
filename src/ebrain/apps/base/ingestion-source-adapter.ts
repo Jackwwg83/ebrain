@@ -1,20 +1,23 @@
 import type {
-  IngestionEvent,
   IngestionSource,
   IngestionSourceContext,
   IngestionSourceHealth,
   IngestionSourceMode,
 } from '../../../core/ingestion/types.ts';
-import { computeContentHash } from '../../../core/ingestion/types.ts';
 import type { OperationContext } from '../../../core/operations.ts';
 import {
   checkCircuit,
   markIngestError,
   resetCircuit,
 } from '../../sources/circuit-breaker.ts';
+import {
+  toEnterpriseSlug,
+  upsertEnterpriseObject,
+} from '../../sources/ingest-common.ts';
 import type { EnterpriseApp } from './enterprise-app.ts';
 import type { RateLimitKey } from './tiered-rate-limiter.ts';
 import type { TokenKind } from './token-manager.ts';
+import type { EnterpriseIngestObject } from './types.ts';
 
 export interface BaseIngestionSourceOpts {
   /** Unique source instance id, e.g. 'feishu-docs:tenant-acme'. */
@@ -180,13 +183,13 @@ export abstract class BaseEnterpriseIngestionSource implements IngestionSource {
   }
 
   /**
-   * Subclasses fetch vendor records and return upstream ingestion events plus
+   * Subclasses fetch vendor records and return enterprise ingest objects plus
    * the new persisted cursor.
    */
   protected abstract pollOnce(
     ctx: IngestionSourceContext,
     cursorState: Record<string, unknown>,
-  ): Promise<{ events: IngestionEvent[]; cursorState: Record<string, unknown> }>;
+  ): Promise<{ objects: EnterpriseIngestObject[]; cursorState: Record<string, unknown> }>;
 
   protected async pollWithGuards(): Promise<void> {
     const ctx = this.requireContext();
@@ -235,8 +238,9 @@ export abstract class BaseEnterpriseIngestionSource implements IngestionSource {
       if (this.stopping || ctx.abortSignal.aborted) return;
       const result = await this.pollOnce(ctx, cursorState);
 
-      for (const event of result.events) {
-        ctx.emit(event);
+      // Sync-1d will switch this internal write path to ctx.emit + custom dispatcher.
+      for (const obj of result.objects) {
+        await upsertEnterpriseObject(this.operationCtx(ctx), obj);
       }
 
       await this.writeCursorState(ctx, result.cursorState);
@@ -261,28 +265,54 @@ export abstract class BaseEnterpriseIngestionSource implements IngestionSource {
     }
   }
 
-  /** Build a valid upstream IngestionEvent with ebrain source provenance. */
-  protected makeEvent(opts: {
-    source_uri: string;
-    content_type: IngestionEvent['content_type'];
-    content: string;
-    trusted?: boolean;
-  }): IngestionEvent {
-    const event: IngestionEvent = {
-      source_id: this.id,
-      source_kind: this.kind,
-      source_uri: opts.source_uri,
-      received_at: new Date().toISOString(),
-      content_type: opts.content_type,
-      content: opts.content,
-      content_hash: computeContentHash(opts.content),
+  protected makeEnterpriseObject(opts: {
+    sourceId?: EnterpriseIngestObject['sourceId'];
+    sourceType?: EnterpriseIngestObject['sourceType'];
+    externalId: EnterpriseIngestObject['externalId'];
+    objectType: EnterpriseIngestObject['objectType'];
+    title: EnterpriseIngestObject['title'];
+    bodyMarkdown: EnterpriseIngestObject['bodyMarkdown'];
+    modifiedAt?: EnterpriseIngestObject['modifiedAt'];
+    url?: EnterpriseIngestObject['url'];
+    participants?: EnterpriseIngestObject['participants'];
+    ownerOrgUnit?: EnterpriseIngestObject['ownerOrgUnit'];
+    classification?: EnterpriseIngestObject['classification'];
+    raw?: EnterpriseIngestObject['raw'];
+    metadata?: EnterpriseIngestObject['metadata'];
+    rawRef?: string;
+  }): EnterpriseIngestObject {
+    const sourceId = opts.sourceId ?? this.id;
+    const sourceType: EnterpriseIngestObject['sourceType'] = opts.sourceType ?? this.app.appType;
+    const participants = opts.participants ?? [];
+    const classification = opts.classification ?? 'L1';
+    const slug = toEnterpriseSlug(sourceType, sourceId, opts.externalId);
+
+    return {
+      sourceId,
+      sourceType,
+      externalId: opts.externalId,
+      objectType: opts.objectType,
+      title: opts.title,
+      bodyMarkdown: opts.bodyMarkdown,
+      modifiedAt: opts.modifiedAt,
+      url: opts.url,
+      participants,
+      ownerOrgUnit: opts.ownerOrgUnit,
+      classification,
+      raw: opts.raw,
+      metadata: {
+        ...(opts.metadata ?? {}),
+        slug,
+        ingest_source_id: sourceId,
+        external_id: opts.externalId,
+        object_type: opts.objectType,
+        source_type: sourceType,
+        url: opts.url ?? null,
+        participants,
+        classification,
+        raw_ref: opts.rawRef ?? null,
+      },
     };
-
-    if (opts.trusted === false) {
-      event.untrusted_payload = true;
-    }
-
-    return event;
   }
 
   protected tokenKind(): TokenKind {
