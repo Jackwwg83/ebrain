@@ -37,12 +37,19 @@ describe('DingtalkEnterpriseApp', () => {
 
   test('subConnectors contains the five DingTalk connectors and no wiki connector', () => {
     const app = makeDingtalkApp({ engine });
-    expect(app.subConnectors.map((connector) => connector.name)).toEqual([
+    expect(app.subConnectors.map((connector) => connector.kind)).toEqual([
       'dingtalk-im',
       'dingtalk-docs',
       'dingtalk-drive',
       'dingtalk-calendar',
       'dingtalk-meeting',
+    ]);
+    expect(app.subConnectors.map((connector) => connector.id)).toEqual([
+      'dingtalk-im:dingtalk-dev',
+      'dingtalk-docs:dingtalk-dev',
+      'dingtalk-drive:dingtalk-dev',
+      'dingtalk-calendar:dingtalk-dev',
+      'dingtalk-meeting:dingtalk-dev',
     ]);
   });
 });

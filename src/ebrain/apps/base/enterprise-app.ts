@@ -1,3 +1,4 @@
+import type { IngestionSource } from '../../../core/ingestion/types.ts';
 import type { BotAdapter } from './bot-adapter.ts';
 import type { EnterpriseConnector } from './enterprise-connector.ts';
 import type { EnterpriseAppType } from './types.ts';
@@ -23,7 +24,7 @@ export interface EnterpriseApp {
   botAdapter?: BotAdapter;
 
   /** Data-ingest sub-connectors owned by this app adapter. */
-  subConnectors: EnterpriseConnector[];
+  subConnectors: Array<EnterpriseConnector | IngestionSource>;
 
   /** Whether this app participates in scheduled ingest or webhook handling. */
   enabled: boolean;

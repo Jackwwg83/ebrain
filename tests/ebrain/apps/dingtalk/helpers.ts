@@ -1,9 +1,20 @@
 import { PGLiteEngine } from '../../../../src/core/pglite-engine.ts';
+import type {
+  IngestionEvent,
+  IngestionSource,
+  IngestionSourceContext,
+} from '../../../../src/core/ingestion/types.ts';
 import type { OperationContext } from '../../../../src/core/operations.ts';
 import { encrypt } from '../../../../src/ebrain/secrets/crypto.ts';
 import { _setMasterKeyForTest } from '../../../../src/ebrain/secrets/master-key.ts';
 import { DingtalkEnterpriseApp } from '../../../../src/ebrain/apps/dingtalk/index.ts';
 import type { FetchLike } from '../../../../src/ebrain/apps/dingtalk/types.ts';
+
+export interface CapturedDingtalkRequest {
+  url: string;
+  body: Record<string, unknown>;
+  headers: Record<string, string>;
+}
 
 export function logger(): OperationContext['logger'] {
   return { info() {}, warn() {}, error() {} };
@@ -18,6 +29,32 @@ export function makeCtx(engine: PGLiteEngine): OperationContext {
     remote: false,
     sourceId: 'default',
   } as OperationContext;
+}
+
+export function makeIngestionCtx(args: {
+  engine: PGLiteEngine;
+  emitted?: IngestionEvent[];
+  controller?: AbortController;
+}): IngestionSourceContext {
+  const emitted = args.emitted ?? [];
+  const controller = args.controller ?? new AbortController();
+  return {
+    emit(event: IngestionEvent): void {
+      emitted.push(event);
+    },
+    engine: args.engine,
+    logger: logger(),
+    abortSignal: controller.signal,
+    config: {},
+  };
+}
+
+export async function runInitialSourcePoll(source: IngestionSource, ctx: IngestionSourceContext): Promise<void> {
+  try {
+    await source.start(ctx);
+  } finally {
+    await source.stop();
+  }
 }
 
 export async function setupEngine(): Promise<{ engine: PGLiteEngine; ctx: OperationContext }> {
@@ -44,6 +81,83 @@ export async function seedDingtalkApp(engine: PGLiteEngine, appId = 'dingtalk-de
       JSON.stringify({ corpId: 'corp-test' }),
     ],
   );
+}
+
+export async function seedDingtalkCursor(
+  engine: PGLiteEngine,
+  args: { sourceId: string; sourceKind: string; cursorState: Record<string, unknown>; appId?: string },
+): Promise<void> {
+  await engine.executeRaw(
+    `INSERT INTO enterprise_ingest_sources (
+       ingest_source_id,
+       parent_app_id,
+       ingest_source_type,
+       display_name,
+       cursor_state
+     ) VALUES ($1, $2, $3, $3, $4::jsonb)
+     ON CONFLICT (ingest_source_id) DO UPDATE SET
+       cursor_state = EXCLUDED.cursor_state`,
+    [
+      args.sourceId,
+      args.appId ?? 'dingtalk-dev',
+      args.sourceKind,
+      JSON.stringify(args.cursorState),
+    ],
+  );
+}
+
+export async function readDingtalkSourceRow(engine: PGLiteEngine, sourceId: string): Promise<{
+  cursorState: Record<string, unknown>;
+  lastSuccessAt: string | Date | null;
+  consecutiveErrors: number;
+  lastError: string | null;
+}> {
+  const rows = await engine.executeRaw<{
+    cursor_state: unknown;
+    last_success_at: string | Date | null;
+    consecutive_errors: number;
+    last_error: string | null;
+  }>(
+    `SELECT cursor_state, last_success_at, consecutive_errors, last_error
+     FROM enterprise_ingest_sources
+     WHERE ingest_source_id = $1`,
+    [sourceId],
+  );
+  const row = rows[0];
+  if (!row) throw new Error(`Missing DingTalk source row ${sourceId}`);
+  return {
+    cursorState: toRecord(row.cursor_state),
+    lastSuccessAt: row.last_success_at,
+    consecutiveErrors: row.consecutive_errors,
+    lastError: row.last_error,
+  };
+}
+
+export function makeDingtalkListFetch<T>(
+  arrayKey: string,
+  records: T[],
+  requests: CapturedDingtalkRequest[],
+): FetchLike {
+  return async (input, init) => {
+    const headers = new Headers(init?.headers);
+    requests.push({
+      url: String(input),
+      body: JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>,
+      headers: Object.fromEntries(headers.entries()),
+    });
+    return Response.json({ [arrayKey]: records });
+  };
+}
+
+export function latestDingtalkCursor(records: Array<{ modifiedTime?: string; createTime?: string; startTime?: string }>): string {
+  const latest = records
+    .map((record) => record.modifiedTime ?? record.createTime ?? record.startTime)
+    .filter((value): value is string => typeof value === 'string')
+    .map((value) => new Date(value).getTime())
+    .filter((value) => Number.isFinite(value))
+    .sort((a, b) => b - a)[0];
+  if (latest === undefined) throw new Error('Cannot compute cursor for empty DingTalk fixture');
+  return new Date(latest).toISOString();
 }
 
 export async function seedTenantToken(
@@ -77,4 +191,10 @@ export function makeDingtalkApp(args: {
     fetch: args.fetch ?? (async () => new Response('{}', { status: 200 })),
     now: args.now ?? (() => new Date('2026-05-20T02:00:00.000Z')),
   });
+}
+
+function toRecord(value: unknown): Record<string, unknown> {
+  if (typeof value === 'string') return JSON.parse(value) as Record<string, unknown>;
+  if (value && typeof value === 'object' && !Array.isArray(value)) return value as Record<string, unknown>;
+  return {};
 }

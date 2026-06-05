@@ -1,52 +1,78 @@
-import type { OperationContext } from '../../../../core/operations.ts';
-import type { EnterpriseConnector, EnterpriseIngestObject, EnterpriseIngestResult } from '../../base/index.ts';
-import { upsertEnterpriseObject } from '../../../sources/ingest-common.ts';
-import { markIngestError, checkCircuit, resetCircuit } from '../../../sources/circuit-breaker.ts';
+import type {
+  IngestionEvent,
+  IngestionSourceContext,
+} from '../../../../core/ingestion/types.ts';
+import { BaseEnterpriseIngestionSource } from '../../base/index.ts';
 import type { DingtalkEnterpriseApp } from '../app.ts';
 import type { DingtalkDriveFile } from '../types.ts';
-import { fetchDingtalkRecords, isoCursor, requireDingtalkString, runDingtalkConnectorLoad } from './common.ts';
+import {
+  cursorSince,
+  cursorStateFor,
+  extractArray,
+  fetchDingtalkRecords,
+  requireDingtalkString,
+  sourceFetchMode,
+  type DingtalkSourceOptions,
+} from './common.ts';
 
 const ENDPOINT = '/v1.0/drive/files';
-const SOURCE_ID = 'dingtalk-drive';
+const SOURCE_KIND = 'dingtalk-drive';
 
-export interface DingtalkDriveConnectorOptions {
+export interface DingtalkDriveSourceOptions extends DingtalkSourceOptions {
   fixtureFiles?: DingtalkDriveFile[];
 }
 
-export class DingtalkDriveConnector implements EnterpriseConnector {
-  readonly name = SOURCE_ID;
-  readonly app: DingtalkEnterpriseApp;
+export class DingtalkDriveSource extends BaseEnterpriseIngestionSource {
+  private readonly dingtalkApp: DingtalkEnterpriseApp;
   private readonly fixtureFiles?: DingtalkDriveFile[];
+  private readonly initialSince?: string;
 
-  constructor(app: DingtalkEnterpriseApp, opts: DingtalkDriveConnectorOptions = {}) {
-    this.app = app;
+  constructor(app: DingtalkEnterpriseApp, opts: DingtalkDriveSourceOptions = {}) {
+    super({
+      id: `${SOURCE_KIND}:${app.appId}`,
+      kind: SOURCE_KIND,
+      app,
+      pollIntervalMs: opts.pollIntervalMs,
+      mode: opts.mode,
+    });
+    this.dingtalkApp = app;
     this.fixtureFiles = opts.fixtureFiles;
+    this.initialSince = opts.since;
   }
 
-  async runIncremental(ctx: OperationContext): Promise<EnterpriseIngestResult> {
-    return this.ingestFiles(ctx, () => this.loadFiles({ mode: 'incremental' }));
+  protected async pollOnce(
+    _ctx: IngestionSourceContext,
+    cursorState: Record<string, unknown>,
+  ): Promise<{ events: IngestionEvent[]; cursorState: Record<string, unknown> }> {
+    const files = await this.loadFiles(cursorState);
+    return {
+      events: files.map((file) => this.fileToEvent(file)),
+      cursorState: cursorStateFor(files),
+    };
   }
 
-  async runBackfill(ctx: OperationContext, opts: { since?: string }): Promise<EnterpriseIngestResult> {
-    return this.ingestFiles(ctx, () => this.loadFiles({ mode: 'backfill', since: opts.since }));
+  private async loadFiles(cursorState: Record<string, unknown>): Promise<DingtalkDriveFile[]> {
+    if (this.fixtureFiles) return this.fixtureFiles;
+    return fetchDingtalkRecords<DingtalkDriveFile>(
+      this.dingtalkApp,
+      ENDPOINT,
+      {
+        mode: sourceFetchMode(this.mode),
+        since: cursorSince(cursorState, this.initialSince),
+      },
+      (payload) => extractArray<DingtalkDriveFile>(payload, ['files', 'items']),
+    );
   }
 
-  async handleWebhookEvent(): Promise<EnterpriseIngestResult> {
-    return { objectsIngested: 0, objectsSkipped: 1, errors: 0 };
-  }
-
-  async transform(raw: unknown): Promise<EnterpriseIngestObject> {
-    const file = raw as DingtalkDriveFile;
+  private fileToEvent(file: DingtalkDriveFile): IngestionEvent {
     const fileId = requireDingtalkString(file.fileId, 'fileId');
     const name = requireDingtalkString(file.name, 'name');
-    const modifiedTime = requireDingtalkString(file.modifiedTime, 'modifiedTime');
-    return {
-      sourceId: SOURCE_ID,
-      sourceType: 'dingtalk',
-      externalId: fileId,
-      objectType: 'drive-file',
-      title: name,
-      bodyMarkdown: [
+    requireDingtalkString(file.modifiedTime, 'modifiedTime');
+
+    return this.makeEvent({
+      source_uri: `dingtalk://drive/${fileId}`,
+      content_type: 'text/markdown',
+      content: [
         `# ${name}`,
         '',
         `- file_id: ${fileId}`,
@@ -54,60 +80,7 @@ export class DingtalkDriveConnector implements EnterpriseConnector {
         `- size_bytes: ${file.size ?? 'unknown'}`,
         `- raw_ref: ${file.rawRef ?? 'not_downloaded'}`,
       ].join('\n'),
-      modifiedAt: modifiedTime,
-      url: file.url,
-      participants: file.ownerUserId ? [file.ownerUserId] : [],
-      classification: 'L1',
-      raw: file.raw ?? file,
-      metadata: {
-        vendor: 'dingtalk',
-        mime_type: file.mimeType ?? null,
-        size: file.size ?? null,
-        raw_ref: file.rawRef ?? null,
-        downloaded: false,
-      },
-    };
-  }
-
-  private async ingestFiles(ctx: OperationContext, load: () => Promise<DingtalkDriveFile[]>): Promise<EnterpriseIngestResult> {
-    return runDingtalkConnectorLoad({
-      ctx,
-      app: this.app,
-      sourceId: SOURCE_ID,
-      displayName: 'DingTalk Drive',
-      load,
-      transform: (raw) => this.transform(raw),
-      cursorForRecords: isoCursor,
-      upsertEnterpriseObject,
-      markIngestError,
-      checkCircuit,
-      resetCircuit,
+      trusted: false,
     });
   }
-
-  private async loadFiles(args: { mode: 'incremental' | 'backfill'; since?: string }): Promise<DingtalkDriveFile[]> {
-    if (this.fixtureFiles) return this.fixtureFiles;
-    return fetchDingtalkRecords<DingtalkDriveFile>(
-      this.app,
-      ENDPOINT,
-      { mode: args.mode, since: args.since },
-      (payload) => extractArray<DingtalkDriveFile>(payload, ['files', 'items']),
-    );
-  }
-}
-
-function extractArray<T>(payload: unknown, keys: string[]): T[] {
-  if (Array.isArray(payload)) return payload as T[];
-  if (!payload || typeof payload !== 'object') {
-    throw new Error(`DingTalk payload must be an object or array with one of: ${keys.join(', ')}`);
-  }
-  const record = payload as Record<string, unknown>;
-  for (const key of keys) {
-    if (Array.isArray(record[key])) return record[key] as T[];
-    const result = record.result;
-    if (result && typeof result === 'object' && Array.isArray((result as Record<string, unknown>)[key])) {
-      return (result as Record<string, unknown>)[key] as T[];
-    }
-  }
-  throw new Error(`DingTalk payload missing expected array field: ${keys.join(', ')}`);
 }

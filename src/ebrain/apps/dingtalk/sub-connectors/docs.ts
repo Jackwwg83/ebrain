@@ -1,100 +1,79 @@
-import type { OperationContext } from '../../../../core/operations.ts';
-import type { EnterpriseConnector, EnterpriseIngestObject, EnterpriseIngestResult } from '../../base/index.ts';
-import { upsertEnterpriseObject } from '../../../sources/ingest-common.ts';
-import { markIngestError, checkCircuit, resetCircuit } from '../../../sources/circuit-breaker.ts';
+import type {
+  IngestionEvent,
+  IngestionSourceContext,
+} from '../../../../core/ingestion/types.ts';
+import { BaseEnterpriseIngestionSource } from '../../base/index.ts';
 import type { DingtalkEnterpriseApp } from '../app.ts';
 import type { DingtalkDocItem } from '../types.ts';
-import { fetchDingtalkRecords, isoCursor, requireDingtalkString, runDingtalkConnectorLoad } from './common.ts';
+import {
+  cursorSince,
+  cursorStateFor,
+  extractArray,
+  fetchDingtalkRecords,
+  requireDingtalkString,
+  sourceFetchMode,
+  type DingtalkSourceOptions,
+} from './common.ts';
 
 const ENDPOINT = '/v1.0/document/docs';
-const SOURCE_ID = 'dingtalk-docs';
+const SOURCE_KIND = 'dingtalk-docs';
 
-export interface DingtalkDocsConnectorOptions {
+export interface DingtalkDocsSourceOptions extends DingtalkSourceOptions {
   fixtureDocs?: DingtalkDocItem[];
 }
 
-export class DingtalkDocsConnector implements EnterpriseConnector {
-  readonly name = SOURCE_ID;
-  readonly app: DingtalkEnterpriseApp;
+export class DingtalkDocsSource extends BaseEnterpriseIngestionSource {
+  private readonly dingtalkApp: DingtalkEnterpriseApp;
   private readonly fixtureDocs?: DingtalkDocItem[];
+  private readonly initialSince?: string;
 
-  constructor(app: DingtalkEnterpriseApp, opts: DingtalkDocsConnectorOptions = {}) {
-    this.app = app;
+  constructor(app: DingtalkEnterpriseApp, opts: DingtalkDocsSourceOptions = {}) {
+    super({
+      id: `${SOURCE_KIND}:${app.appId}`,
+      kind: SOURCE_KIND,
+      app,
+      pollIntervalMs: opts.pollIntervalMs,
+      mode: opts.mode,
+    });
+    this.dingtalkApp = app;
     this.fixtureDocs = opts.fixtureDocs;
+    this.initialSince = opts.since;
   }
 
-  async runIncremental(ctx: OperationContext): Promise<EnterpriseIngestResult> {
-    return this.ingestDocs(ctx, () => this.loadDocs({ mode: 'incremental' }));
-  }
-
-  async runBackfill(ctx: OperationContext, opts: { since?: string }): Promise<EnterpriseIngestResult> {
-    return this.ingestDocs(ctx, () => this.loadDocs({ mode: 'backfill', since: opts.since }));
-  }
-
-  async handleWebhookEvent(): Promise<EnterpriseIngestResult> {
-    return { objectsIngested: 0, objectsSkipped: 1, errors: 0 };
-  }
-
-  async transform(raw: unknown): Promise<EnterpriseIngestObject> {
-    const doc = raw as DingtalkDocItem;
-    const docId = requireDingtalkString(doc.docId, 'docId');
-    const title = requireDingtalkString(doc.title, 'title');
-    const modifiedTime = requireDingtalkString(doc.modifiedTime, 'modifiedTime');
+  protected async pollOnce(
+    _ctx: IngestionSourceContext,
+    cursorState: Record<string, unknown>,
+  ): Promise<{ events: IngestionEvent[]; cursorState: Record<string, unknown> }> {
+    const docs = await this.loadDocs(cursorState);
     return {
-      sourceId: SOURCE_ID,
-      sourceType: 'dingtalk',
-      externalId: docId,
-      objectType: 'doc',
-      title,
-      bodyMarkdown: doc.markdown ?? `# ${title}\n\nDingTalk document content was not returned by the list API.`,
-      modifiedAt: modifiedTime,
-      url: doc.url,
-      participants: doc.ownerUserId ? [doc.ownerUserId] : [],
-      classification: 'L1',
-      raw: doc.raw ?? doc,
-      metadata: { vendor: 'dingtalk', space_id: doc.spaceId ?? null },
+      events: docs.map((doc) => this.docToEvent(doc)),
+      cursorState: cursorStateFor(docs),
     };
   }
 
-  private async ingestDocs(ctx: OperationContext, load: () => Promise<DingtalkDocItem[]>): Promise<EnterpriseIngestResult> {
-    return runDingtalkConnectorLoad({
-      ctx,
-      app: this.app,
-      sourceId: SOURCE_ID,
-      displayName: 'DingTalk Docs',
-      load,
-      transform: (raw) => this.transform(raw),
-      cursorForRecords: isoCursor,
-      upsertEnterpriseObject,
-      markIngestError,
-      checkCircuit,
-      resetCircuit,
-    });
-  }
-
-  private async loadDocs(args: { mode: 'incremental' | 'backfill'; since?: string }): Promise<DingtalkDocItem[]> {
+  private async loadDocs(cursorState: Record<string, unknown>): Promise<DingtalkDocItem[]> {
     if (this.fixtureDocs) return this.fixtureDocs;
     return fetchDingtalkRecords<DingtalkDocItem>(
-      this.app,
+      this.dingtalkApp,
       ENDPOINT,
-      { mode: args.mode, since: args.since },
+      {
+        mode: sourceFetchMode(this.mode),
+        since: cursorSince(cursorState, this.initialSince),
+      },
       (payload) => extractArray<DingtalkDocItem>(payload, ['docs', 'items']),
     );
   }
-}
 
-function extractArray<T>(payload: unknown, keys: string[]): T[] {
-  if (Array.isArray(payload)) return payload as T[];
-  if (!payload || typeof payload !== 'object') {
-    throw new Error(`DingTalk payload must be an object or array with one of: ${keys.join(', ')}`);
+  private docToEvent(doc: DingtalkDocItem): IngestionEvent {
+    const docId = requireDingtalkString(doc.docId, 'docId');
+    const title = requireDingtalkString(doc.title, 'title');
+    requireDingtalkString(doc.modifiedTime, 'modifiedTime');
+
+    return this.makeEvent({
+      source_uri: `dingtalk://docs/${docId}`,
+      content_type: 'text/markdown',
+      content: doc.markdown ?? `# ${title}\n\nDingTalk document content was not returned by the list API.`,
+      trusted: false,
+    });
   }
-  const record = payload as Record<string, unknown>;
-  for (const key of keys) {
-    if (Array.isArray(record[key])) return record[key] as T[];
-    const result = record.result;
-    if (result && typeof result === 'object' && Array.isArray((result as Record<string, unknown>)[key])) {
-      return (result as Record<string, unknown>)[key] as T[];
-    }
-  }
-  throw new Error(`DingTalk payload missing expected array field: ${keys.join(', ')}`);
 }

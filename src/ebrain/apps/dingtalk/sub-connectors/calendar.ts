@@ -1,53 +1,79 @@
-import type { OperationContext } from '../../../../core/operations.ts';
-import type { EnterpriseConnector, EnterpriseIngestObject, EnterpriseIngestResult } from '../../base/index.ts';
-import { upsertEnterpriseObject } from '../../../sources/ingest-common.ts';
-import { markIngestError, checkCircuit, resetCircuit } from '../../../sources/circuit-breaker.ts';
+import type {
+  IngestionEvent,
+  IngestionSourceContext,
+} from '../../../../core/ingestion/types.ts';
+import { BaseEnterpriseIngestionSource } from '../../base/index.ts';
 import type { DingtalkEnterpriseApp } from '../app.ts';
 import type { DingtalkCalendarEvent } from '../types.ts';
-import { fetchDingtalkRecords, isoCursor, requireDingtalkString, runDingtalkConnectorLoad } from './common.ts';
+import {
+  cursorSince,
+  cursorStateFor,
+  extractArray,
+  fetchDingtalkRecords,
+  requireDingtalkString,
+  sourceFetchMode,
+  type DingtalkSourceOptions,
+} from './common.ts';
 
 const ENDPOINT = '/v1.0/calendar/events';
-const SOURCE_ID = 'dingtalk-calendar';
+const SOURCE_KIND = 'dingtalk-calendar';
 
-export interface DingtalkCalendarConnectorOptions {
+export interface DingtalkCalendarSourceOptions extends DingtalkSourceOptions {
   fixtureEvents?: DingtalkCalendarEvent[];
 }
 
-export class DingtalkCalendarConnector implements EnterpriseConnector {
-  readonly name = SOURCE_ID;
-  readonly app: DingtalkEnterpriseApp;
+export class DingtalkCalendarSource extends BaseEnterpriseIngestionSource {
+  private readonly dingtalkApp: DingtalkEnterpriseApp;
   private readonly fixtureEvents?: DingtalkCalendarEvent[];
+  private readonly initialSince?: string;
 
-  constructor(app: DingtalkEnterpriseApp, opts: DingtalkCalendarConnectorOptions = {}) {
-    this.app = app;
+  constructor(app: DingtalkEnterpriseApp, opts: DingtalkCalendarSourceOptions = {}) {
+    super({
+      id: `${SOURCE_KIND}:${app.appId}`,
+      kind: SOURCE_KIND,
+      app,
+      pollIntervalMs: opts.pollIntervalMs,
+      mode: opts.mode,
+    });
+    this.dingtalkApp = app;
     this.fixtureEvents = opts.fixtureEvents;
+    this.initialSince = opts.since;
   }
 
-  async runIncremental(ctx: OperationContext): Promise<EnterpriseIngestResult> {
-    return this.ingestEvents(ctx, () => this.loadEvents({ mode: 'incremental' }));
+  protected async pollOnce(
+    _ctx: IngestionSourceContext,
+    cursorState: Record<string, unknown>,
+  ): Promise<{ events: IngestionEvent[]; cursorState: Record<string, unknown> }> {
+    const events = await this.loadEvents(cursorState);
+    return {
+      events: events.map((event) => this.calendarEventToEvent(event)),
+      cursorState: cursorStateFor(events),
+    };
   }
 
-  async runBackfill(ctx: OperationContext, opts: { since?: string }): Promise<EnterpriseIngestResult> {
-    return this.ingestEvents(ctx, () => this.loadEvents({ mode: 'backfill', since: opts.since }));
+  private async loadEvents(cursorState: Record<string, unknown>): Promise<DingtalkCalendarEvent[]> {
+    if (this.fixtureEvents) return this.fixtureEvents;
+    return fetchDingtalkRecords<DingtalkCalendarEvent>(
+      this.dingtalkApp,
+      ENDPOINT,
+      {
+        mode: sourceFetchMode(this.mode),
+        since: cursorSince(cursorState, this.initialSince),
+      },
+      (payload) => extractArray<DingtalkCalendarEvent>(payload, ['events', 'items']),
+    );
   }
 
-  async handleWebhookEvent(): Promise<EnterpriseIngestResult> {
-    return { objectsIngested: 0, objectsSkipped: 1, errors: 0 };
-  }
-
-  async transform(raw: unknown): Promise<EnterpriseIngestObject> {
-    const event = raw as DingtalkCalendarEvent;
+  private calendarEventToEvent(event: DingtalkCalendarEvent): IngestionEvent {
     const eventId = requireDingtalkString(event.eventId, 'eventId');
     const summary = requireDingtalkString(event.summary, 'summary');
     const startTime = requireDingtalkString(event.startTime, 'startTime');
     const endTime = requireDingtalkString(event.endTime, 'endTime');
-    return {
-      sourceId: SOURCE_ID,
-      sourceType: 'dingtalk',
-      externalId: eventId,
-      objectType: 'calendar-event',
-      title: summary,
-      bodyMarkdown: [
+
+    return this.makeEvent({
+      source_uri: `dingtalk://calendar/${eventId}`,
+      content_type: 'text/markdown',
+      content: [
         `# ${summary}`,
         '',
         `- start: ${startTime}`,
@@ -58,58 +84,7 @@ export class DingtalkCalendarConnector implements EnterpriseConnector {
         '',
         event.description ?? '',
       ].filter(Boolean).join('\n'),
-      modifiedAt: event.modifiedTime ?? endTime,
-      url: event.url,
-      participants: unique([event.organizerUserId, ...(event.attendeeUserIds ?? [])]),
-      classification: 'L1',
-      raw: event.raw ?? event,
-      metadata: { vendor: 'dingtalk', location: event.location ?? null },
-    };
-  }
-
-  private async ingestEvents(ctx: OperationContext, load: () => Promise<DingtalkCalendarEvent[]>): Promise<EnterpriseIngestResult> {
-    return runDingtalkConnectorLoad({
-      ctx,
-      app: this.app,
-      sourceId: SOURCE_ID,
-      displayName: 'DingTalk Calendar',
-      load,
-      transform: (raw) => this.transform(raw),
-      cursorForRecords: isoCursor,
-      upsertEnterpriseObject,
-      markIngestError,
-      checkCircuit,
-      resetCircuit,
+      trusted: false,
     });
   }
-
-  private async loadEvents(args: { mode: 'incremental' | 'backfill'; since?: string }): Promise<DingtalkCalendarEvent[]> {
-    if (this.fixtureEvents) return this.fixtureEvents;
-    return fetchDingtalkRecords<DingtalkCalendarEvent>(
-      this.app,
-      ENDPOINT,
-      { mode: args.mode, since: args.since },
-      (payload) => extractArray<DingtalkCalendarEvent>(payload, ['events', 'items']),
-    );
-  }
-}
-
-function unique(values: Array<string | undefined>): string[] {
-  return [...new Set(values.filter((value): value is string => Boolean(value)))];
-}
-
-function extractArray<T>(payload: unknown, keys: string[]): T[] {
-  if (Array.isArray(payload)) return payload as T[];
-  if (!payload || typeof payload !== 'object') {
-    throw new Error(`DingTalk payload must be an object or array with one of: ${keys.join(', ')}`);
-  }
-  const record = payload as Record<string, unknown>;
-  for (const key of keys) {
-    if (Array.isArray(record[key])) return record[key] as T[];
-    const result = record.result;
-    if (result && typeof result === 'object' && Array.isArray((result as Record<string, unknown>)[key])) {
-      return (result as Record<string, unknown>)[key] as T[];
-    }
-  }
-  throw new Error(`DingTalk payload missing expected array field: ${keys.join(', ')}`);
 }

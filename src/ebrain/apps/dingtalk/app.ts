@@ -1,6 +1,6 @@
 import type { BrainEngine } from '../../../core/engine.ts';
 import type { OperationContext } from '../../../core/operations.ts';
-import type { EnterpriseApp, EnterpriseConnector } from '../base/index.ts';
+import type { BaseEnterpriseIngestionSource, EnterpriseApp } from '../base/index.ts';
 import { DingtalkBotAdapter } from './bot-adapter.ts';
 import { DingtalkRateLimiter } from './rate-limit.ts';
 import { DingtalkTokenManager } from './token-manager.ts';
@@ -11,11 +11,11 @@ import {
   type DingtalkRuntimeConfig,
   type FetchLike,
 } from './types.ts';
-import { DingtalkCalendarConnector } from './sub-connectors/calendar.ts';
-import { DingtalkDocsConnector } from './sub-connectors/docs.ts';
-import { DingtalkDriveConnector } from './sub-connectors/drive.ts';
-import { DingtalkImConnector } from './sub-connectors/im.ts';
-import { DingtalkMeetingConnector } from './sub-connectors/meeting.ts';
+import { DingtalkCalendarSource } from './sub-connectors/calendar.ts';
+import { DingtalkDocsSource } from './sub-connectors/docs.ts';
+import { DingtalkDriveSource } from './sub-connectors/drive.ts';
+import { DingtalkImSource } from './sub-connectors/im.ts';
+import { DingtalkMeetingSource } from './sub-connectors/meeting.ts';
 
 export class DingtalkEnterpriseApp implements EnterpriseApp {
   readonly appId: string;
@@ -34,7 +34,7 @@ export class DingtalkEnterpriseApp implements EnterpriseApp {
   readonly rateLimiter: DingtalkRateLimiter;
   readonly webhookHandler: DingtalkWebhookHandler;
   readonly botAdapter: DingtalkBotAdapter;
-  readonly subConnectors: EnterpriseConnector[];
+  readonly subConnectors: BaseEnterpriseIngestionSource[];
 
   readonly enabled: boolean;
   readonly botEnabled: boolean;
@@ -90,11 +90,11 @@ export class DingtalkEnterpriseApp implements EnterpriseApp {
       now: config.now,
     });
     this.subConnectors = [
-      new DingtalkImConnector(this),
-      new DingtalkDocsConnector(this),
-      new DingtalkDriveConnector(this),
-      new DingtalkCalendarConnector(this),
-      new DingtalkMeetingConnector(this),
+      new DingtalkImSource(this),
+      new DingtalkDocsSource(this),
+      new DingtalkDriveSource(this),
+      new DingtalkCalendarSource(this),
+      new DingtalkMeetingSource(this),
     ];
   }
 

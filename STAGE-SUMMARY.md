@@ -2833,3 +2833,71 @@ src/ebrain/apps/base/index.ts
 tests/ebrain/apps/base/ingestion-source-adapter.test.ts
 STAGE-SUMMARY.md
 ```
+
+# Sync-1b: DingTalk IngestionSource Refactor
+
+## Status
+
+- Stage: Sync-1b
+- Branch: `ebrain-mvp`
+- Scope: refactor the five real DingTalk sub-connectors from `EnterpriseConnector` pull/upsert adapters into `BaseEnterpriseIngestionSource` implementations. Other vendors remain untouched for Sync-1c.
+- Result: `dingtalk-im`, `dingtalk-docs`, `dingtalk-drive`, `dingtalk-calendar`, and `dingtalk-meeting` now emit upstream `IngestionEvent` payloads and let the Sync-1a base handle source rows, cursor persistence, circuit state, token refresh, and poll rate guards.
+
+## Implementation
+
+- Replaced the five DingTalk connector classes with source classes:
+  - `DingtalkImSource`
+  - `DingtalkDocsSource`
+  - `DingtalkDriveSource`
+  - `DingtalkCalendarSource`
+  - `DingtalkMeetingSource`
+- Simplified `src/ebrain/apps/dingtalk/sub-connectors/common.ts`.
+  - Kept `fetchDingtalkRecords`, `isoCursor`-style cursor helpers, array extraction, and required-string validation.
+  - Removed `runDingtalkConnectorBatch`, `runDingtalkConnectorLoad`, `ensureDingtalkIngestSource`, and sub-connector cursor writes.
+- Updated `DingtalkEnterpriseApp.subConnectors` to register `BaseEnterpriseIngestionSource[]` with unique ids such as `dingtalk-docs:dingtalk-dev` and source kinds such as `dingtalk-docs`.
+- Widened the ebrain `EnterpriseApp.subConnectors` type to `EnterpriseConnector | IngestionSource` without changing the `EnterpriseConnector` interface.
+- Updated DingTalk tests to use `IngestionSource.start(ctx)` and inspect emitted events plus `enterprise_ingest_sources.cursor_state`.
+
+## Verification Evidence
+
+| Check | Result | Evidence |
+|---|---|---|
+| DingTalk focused suite | PASS | `bun test tests/ebrain/apps/dingtalk/` -> 26 pass, 0 fail, 105 expect() calls. |
+| Adapter regression | PASS | `bun test tests/ebrain/apps/base/ingestion-source-adapter.test.ts` -> 11 pass, 0 fail, 38 expect() calls. |
+| OAuth core gate | PASS | `bun test test/oauth.test.ts` -> 91 pass, 0 fail, 362 expect() calls. |
+| HTTP transport core gate | PASS | `bun test test/http-transport.test.ts` -> 28 pass, 0 fail, 82 expect() calls. |
+| Root typecheck | PASS | `bun run typecheck` -> `tsc --noEmit` exited 0. |
+| Diff check | PASS | `git diff --check` exited 0. |
+| Charter v2 core guard | PASS | `git diff --stat -- src/core src/mcp` returned empty. |
+| Other vendor guard | PASS | `git diff --stat -- src/ebrain/apps/feishu src/ebrain/apps/wecom src/ebrain/apps/crm src/ebrain/apps/tencent-meeting` returned empty. |
+| No legacy DingTalk connector paths | PASS | `rg "implements EnterpriseConnector|runIncremental|runBackfill|markIngestError|checkCircuit|resetCircuit|upsertEnterpriseObject|runDingtalkConnector|ensureDingtalkIngestSource|ctx\\.emit" src/ebrain/apps/dingtalk/sub-connectors tests/ebrain/apps/dingtalk/sub-connectors` returned no matches. |
+| No full unit suite | PASS | Did not run `bun test test/` full suite per Sync-1b instruction/OOM warning. |
+
+## Runtime Evidence Notes
+
+- Each DingTalk source test starts the real `BaseEnterpriseIngestionSource` lifecycle with a real `IngestionSourceContext`, captures `ctx.emit(event)`, and then stops the source.
+- The mock DingTalk API requests were inspected directly. Example docs request body: `{ mode: 'incremental', since: '2026-05-18T00:00:00.000Z' }`, with `x-acs-dingtalk-access-token: tenant-token`.
+- Emitted event payloads were validated with upstream `validateIngestionEvent`; observed fields include `source_id`, `source_kind`, `source_uri` (`dingtalk://docs/...`, `dingtalk://im/...`, `dingtalk://drive/...`, `dingtalk://calendar/...`, `dingtalk://meeting/...`), `content_type`, `content_hash`, and `untrusted_payload: true`.
+- Real PGLite rows were inspected after source execution. Each source wrote `enterprise_ingest_sources.cursor_state.lastSyncedAt` from the latest fixture timestamp and set `last_success_at`.
+- Error evidence remains runtime-backed: the docs failure test runs the source against a 500 mock DingTalk response and reads `consecutive_errors = 1` plus a `last_error` containing `DingTalk API`.
+
+## Files Changed
+
+```text
+src/ebrain/apps/base/enterprise-app.ts
+src/ebrain/apps/dingtalk/app.ts
+src/ebrain/apps/dingtalk/sub-connectors/calendar.ts
+src/ebrain/apps/dingtalk/sub-connectors/common.ts
+src/ebrain/apps/dingtalk/sub-connectors/docs.ts
+src/ebrain/apps/dingtalk/sub-connectors/drive.ts
+src/ebrain/apps/dingtalk/sub-connectors/im.ts
+src/ebrain/apps/dingtalk/sub-connectors/meeting.ts
+tests/ebrain/apps/dingtalk/app.test.ts
+tests/ebrain/apps/dingtalk/helpers.ts
+tests/ebrain/apps/dingtalk/sub-connectors/calendar.test.ts
+tests/ebrain/apps/dingtalk/sub-connectors/docs.test.ts
+tests/ebrain/apps/dingtalk/sub-connectors/drive.test.ts
+tests/ebrain/apps/dingtalk/sub-connectors/im.test.ts
+tests/ebrain/apps/dingtalk/sub-connectors/meeting.test.ts
+STAGE-SUMMARY.md
+```
