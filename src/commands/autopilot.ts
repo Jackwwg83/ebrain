@@ -254,6 +254,18 @@ export async function runAutopilot(engine: BrainEngine, args: string[]) {
     console.log('[autopilot] --no-worker set: dispatch loop only (worker managed externally)');
   }
 
+  let enterpriseIngestionDaemon: Awaited<ReturnType<typeof import('../ebrain/daemon/index.ts')['bootstrapEnterpriseIngestionDaemon']>> | null = null;
+  try {
+    const { bootstrapEnterpriseIngestionDaemon } = await import('../ebrain/daemon/index.ts');
+    enterpriseIngestionDaemon = await bootstrapEnterpriseIngestionDaemon(engine, {
+      info: (msg) => console.log(msg),
+      warn: (msg) => console.error(`[autopilot] WARN ${msg}`),
+      error: (msg) => console.error(`[autopilot] ERROR ${msg}`),
+    });
+  } catch (e) {
+    logError('ebrain.ingestion-bootstrap', e);
+  }
+
   // Async shutdown with 35s drain window for the worker child. The worker
   // has its own SIGTERM handler (minions/worker.ts:79-85) that drains
   // in-flight jobs for up to 30s before exit. We give it 35s here to
@@ -265,6 +277,13 @@ export async function runAutopilot(engine: BrainEngine, args: string[]) {
     if (stopping) return;
     stopping = true;
     console.log(`Autopilot stopping (${sig}).`);
+    if (enterpriseIngestionDaemon) {
+      try {
+        await enterpriseIngestionDaemon.stop(10_000);
+      } catch (e) {
+        logError('ebrain.ingestion-stop', e);
+      }
+    }
     if (childSupervisor) {
       childSupervisor.killChild('SIGTERM');
       await childSupervisor.awaitChildExit(35_000);

@@ -2933,3 +2933,72 @@ tests/ebrain/apps/dingtalk/sub-connectors/im.test.ts
 tests/ebrain/apps/dingtalk/sub-connectors/meeting.test.ts
 STAGE-SUMMARY.md
 ```
+
+# Sync-1d: Enterprise IngestionDaemon Bootstrap
+
+## Status
+
+- Stage: Sync-1d
+- Branch: `ebrain-mvp`
+- Scope: wire ebrain's migrated DingTalk `BaseEnterpriseIngestionSource` sub-connectors into upstream `IngestionDaemon` at autopilot process startup. Keep enterprise-cycle business logic unchanged.
+- Result: ebrain now bootstraps one in-process `IngestionDaemon`, scans enabled `enterprise_apps`, lazy-loads migrated app adapters, registers active `IngestionSource` sub-connectors, starts the daemon, and stops it during autopilot shutdown with a 10s grace window.
+
+## Implementation
+
+- Added `src/ebrain/daemon/ingestion-bootstrap.ts`.
+  - Exposes `bootstrapEnterpriseIngestionDaemon(engine, logger): Promise<IngestionDaemon>`.
+  - Uses a module-level singleton so autopilot cannot double-bootstrap the daemon in one process.
+  - Reads `enterprise_apps` with `enabled = true AND deleted_at IS NULL`.
+  - Lazy-loads the migrated DingTalk app adapter; other app types are skipped without touching their placeholder files.
+  - Validates encrypted DingTalk secrets by decrypting existing `encrypted:` payloads, or encrypts plaintext legacy secret fields before constructing the app runtime.
+  - Registers only `IngestionSource` sub-connectors and skips source rows with `sync_enabled=false` or `deleted_at IS NOT NULL`.
+  - Starts upstream `IngestionDaemon` with a no-op dispatcher because Sync-1b keeps `BaseEnterpriseIngestionSource` writing through `upsertEnterpriseObject`.
+- Added `src/ebrain/daemon/index.ts` exports.
+- Appended autopilot hooks in `src/commands/autopilot.ts`.
+  - Startup: best-effort bootstrap; failure logs but does not block normal autopilot behavior.
+  - Shutdown: `daemon.stop(10_000)` before worker child drain.
+- Replaced the 3-line `connector-incremental.ts` placeholder with a real minion handler.
+  - Registered as `ebrain-sync` and `ebrain-connector-incremental`.
+  - Since upstream `IngestionDaemon` has no `triggerSourcePoll` API, the handler does not pretend to poll; it reports the source as daemon-managed, or skipped for disabled/deleted rows.
+- Added focused tests:
+  - `tests/ebrain/daemon/ingestion-bootstrap.test.ts`
+  - `tests/ebrain/jobs/connector-incremental.test.ts`
+
+## Verification Evidence
+
+| Check | Result | Evidence |
+|---|---|---|
+| Bootstrap daemon test | PASS | `bun test tests/ebrain/daemon/ingestion-bootstrap.test.ts` -> 3 pass, 0 fail, 8 expect() calls. |
+| Connector incremental job test | PASS | `bun test tests/ebrain/jobs/connector-incremental.test.ts` -> 3 pass, 0 fail, 7 expect() calls. |
+| Worker registration smoke | PASS | `bun test test/handlers.test.ts` -> 8 pass, 0 fail, 39 expect() calls. |
+| DingTalk focused suite | PASS | `bun test tests/ebrain/apps/dingtalk/` -> 28 pass, 0 fail, 125 expect() calls. |
+| Adapter regression | PASS | `bun test tests/ebrain/apps/base/ingestion-source-adapter.test.ts` -> 12 pass, 0 fail, 44 expect() calls. |
+| OAuth core gate | PASS | `bun test test/oauth.test.ts` -> 91 pass, 0 fail, 362 expect() calls. |
+| HTTP transport core gate | PASS | `bun test test/http-transport.test.ts` -> 28 pass, 0 fail, 82 expect() calls. |
+| Root typecheck | PASS | `bun run typecheck` -> `tsc --noEmit` exited 0. |
+| Charter v2 core guard | PASS | `git diff 41cf7bda..HEAD -- src/core src/mcp --stat` returned empty. |
+| Autopilot append-only guard | PASS | `git diff --numstat 41cf7bda -- src/commands/autopilot.ts` -> `19  0`, so no deletions. |
+| Enterprise cycle guard | PASS | `git diff -- src/ebrain/jobs/dream-cycle-enterprise.ts` returned empty. |
+| Other vendor guard | PASS | `git diff -- src/ebrain/apps/feishu src/ebrain/apps/wecom src/ebrain/apps/crm src/ebrain/apps/tencent-meeting` returned empty. |
+| No full unit suite | PASS | Did not run `bun test test/` full suite per Sync-1d instruction. |
+
+## Runtime Evidence Notes
+
+- The production DingTalk bootstrap test uses real PGLite v200 schema, a real `DingtalkEnterpriseApp`, the five real DingTalk source classes, a real upstream `IngestionDaemon`, a stubbed `globalThis.fetch`, and a real encrypted tenant token row.
+- That test starts the daemon and observes all five registered source ids: `dingtalk-im:dingtalk-prod`, `dingtalk-docs:dingtalk-prod`, `dingtalk-drive:dingtalk-prod`, `dingtalk-calendar:dingtalk-prod`, and `dingtalk-meeting:dingtalk-prod`.
+- The same test directly reads produced `enterprise_ingest_sources` rows for `parent_app_id = dingtalk-prod` and verifies every row has non-null `last_success_at`, proving daemon start invoked each source's initial poll path.
+- Disabled-source evidence is row-backed: sources with `enterprise_ingest_sources.sync_enabled=false` and soft-deleted source rows are skipped before daemon registration.
+- `connector-incremental` evidence is explicit: manual `ebrain-sync` jobs now return `triggered: false` with a reason naming the missing upstream `triggerSourcePoll` API, instead of implying a poll occurred.
+
+## Files Changed
+
+```text
+src/commands/autopilot.ts
+src/commands/jobs.ts
+src/ebrain/daemon/index.ts
+src/ebrain/daemon/ingestion-bootstrap.ts
+src/ebrain/jobs/connector-incremental.ts
+tests/ebrain/daemon/ingestion-bootstrap.test.ts
+tests/ebrain/jobs/connector-incremental.test.ts
+STAGE-SUMMARY.md
+```

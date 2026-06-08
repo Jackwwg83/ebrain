@@ -1541,6 +1541,25 @@ export async function registerBuiltinHandlers(worker: MinionWorker, engine: Brai
   };
   worker.register('ebrain-circuit-breaker-reset', ebrainCircuitBreakerResetHandler);
 
+  const ebrainConnectorIncrementalHandler: MinionHandler = async (job) => {
+    const { connectorIncrementalHandler } = await import('../ebrain/jobs/connector-incremental.ts');
+    const ctx: OperationContext = {
+      engine,
+      config: { engine: engine.kind },
+      logger: {
+        info: (msg) => process.stderr.write(`[ebrain-connector-incremental] ${msg}\n`),
+        warn: (msg) => process.stderr.write(`[ebrain-connector-incremental] WARN ${msg}\n`),
+        error: (msg) => process.stderr.write(`[ebrain-connector-incremental] ERROR ${msg}\n`),
+      },
+      dryRun: false,
+      remote: false,
+      sourceId: 'enterprise',
+    } as OperationContext;
+    return connectorIncrementalHandler(ctx, job);
+  };
+  worker.register('ebrain-sync', ebrainConnectorIncrementalHandler);
+  worker.register('ebrain-connector-incremental', ebrainConnectorIncrementalHandler);
+
   // Shell handler is always registered. Runtime env guard lives inside the
   // handler so claimed jobs emit a clear rejection log on workers missing
   // GBRAIN_ALLOW_SHELL_JOBS=1.
