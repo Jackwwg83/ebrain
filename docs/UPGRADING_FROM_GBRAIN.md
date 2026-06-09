@@ -72,8 +72,8 @@ git merge upstream/master
 bun test test/oauth.test.ts test/http-transport.test.ts
 # 必须全过 — 否则 ebrain 加的 wrapper / shim 破了 upstream 行为契约
 
-# 6. ebrain 测试
-bun test tests/ebrain/
+# 6. ebrain 测试 (builds and uses the PGLite snapshot fixture)
+bun run ebrain:test
 
 # 7. helm dry-run 验证 (J1)
 helm template ebrain deploy/ebrain-helm-chart/ -f deploy/ebrain-helm-chart/values.aliyun.yaml
@@ -91,6 +91,34 @@ bun run verify
 ```
 
 注意：不要用 upstream sync 任务修业务需求。merge 冲突解决只做兼容上游和恢复 ebrain append-only 扩展，业务变更另开 stage。
+
+### ebrain PGLite snapshot gate
+
+`bun run ebrain:test` is the canonical ebrain unit gate. It rebuilds
+`test/fixtures/pglite-snapshot.*`, sets `GBRAIN_PGLITE_SNAPSHOT`, and then runs
+`bun test tests/ebrain/`. The snapshot is an optimization only: the engine
+validates the sidecar schema hash and falls back to normal `initSchema()` if the
+fixture is missing or stale.
+
+Use raw `bun test tests/ebrain/` only when deliberately debugging the cold
+migration path. With the 99+ migration chain, cold per-test PGLite startup is
+the known slow path; the snapshot gate keeps the full ebrain suite practical
+without squashing migrations.
+
+### connector-incremental daemon status
+
+`ebrain-sync` and `ebrain-connector-incremental` are daemon-managed status
+reporters after Sync-1d. They do not trigger an immediate source poll, because
+the upstream `IngestionDaemon` surface does not expose a `triggerSourcePoll`
+API. Autopilot starts the continuous enterprise ingestion daemon through
+`bootstrapEnterpriseIngestionDaemon`; the connector-incremental handler reports
+`triggered: false`, `daemonContinuous: true`, and one of
+`daemon_managed`, `skipped`, or `not_found` based on the real
+`enterprise_ingest_sources` row.
+
+When diagnosing sync freshness, inspect the daemon startup logs and
+`enterprise_ingest_sources` / `enterprise_ingest_objects` rows. Do not interpret
+an `ebrain-sync` job result as proof that a poll ran in that job.
 
 ## 已识别冲突点
 
@@ -122,7 +150,7 @@ bun run verify
 - [ ] `bash scripts/check-upstream-drift.sh` exit 0，或已阅读 drift report 并逐项记录处理结论。
 - [ ] `git merge upstream/master` 冲突解决完成，且已按“已识别冲突点”逐文件复核。
 - [ ] **核心 gate**：`bun test test/oauth.test.ts test/http-transport.test.ts test/serve-http-ebrain-bridge.test.ts test/serve-http-ebrain-write.test.ts` 全过。
-- [ ] `bun test tests/ebrain/` 全过。
+- [ ] `bun run ebrain:test` 全过。
 - [ ] helm dry-run 双栈全过。
 - [ ] `bun run ebrain:smoke` 全过，并检查真实 PGLite artifact assertions。
 - [ ] `bun run verify` 全过。
@@ -293,7 +321,7 @@ Conflict resolution summary:
 Verification:
 - bun test test/oauth.test.ts test/http-transport.test.ts:
 - bun test test/serve-http-ebrain-bridge.test.ts test/serve-http-ebrain-write.test.ts:
-- bun test tests/ebrain/:
+- bun run ebrain:test:
 - helm template aliyun/aws:
 - bun run ebrain:smoke:
 - bun run verify:

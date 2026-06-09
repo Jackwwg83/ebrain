@@ -54,6 +54,7 @@
     "check:wasm": "scripts/check-wasm-embedded.sh",
     "check:newlines": "scripts/check-trailing-newline.sh",
     "test:e2e": "bash scripts/run-e2e.sh",
+    "ebrain:test": "bun run build:pglite-snapshot && GBRAIN_PGLITE_SNAPSHOT=test/fixtures/pglite-snapshot.tar bun test tests/ebrain/",
     "ebrain:smoke": "bash scripts/ebrain-smoke.sh",
     "ebrain:e2e": "bash scripts/run-e2e-ebrain.sh",
     "test:slow": "bash scripts/run-slow-tests.sh",
